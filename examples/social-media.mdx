@@ -1,0 +1,415 @@
+---
+title: Social Media App
+description: Build a social media application with Cocobase
+---
+
+# Social Media App Example
+
+Build a complete social media application with posts, likes, comments, and followers.
+
+## Features
+
+- User profiles
+- Create and share posts
+- Like and comment on posts
+- Follow other users
+- News feed
+- Real-time updates
+
+---
+
+## Data Models
+
+```typescript
+interface User {
+  email: string;
+  username: string;
+  displayName: string;
+  bio?: string;
+  avatar?: string;
+  followersCount: number;
+  followingCount: number;
+}
+
+interface Post {
+  authorId: string;
+  authorName: string;
+  authorAvatar?: string;
+  content: string;
+  images?: string[];
+  likesCount: number;
+  commentsCount: number;
+  createdAt: string;
+}
+
+interface Like {
+  postId: string;
+  userId: string;
+  createdAt: string;
+}
+
+interface Comment {
+  postId: string;
+  authorId: string;
+  authorName: string;
+  content: string;
+  createdAt: string;
+}
+
+interface Follow {
+  followerId: string;
+  followingId: string;
+  createdAt: string;
+}
+```
+
+---
+
+## Implementation
+
+<Tabs>
+  <Tab title="JavaScript">
+    ```typescript
+    import { Cocobase, QueryBuilder } from "cocobase";
+
+    const db = new Cocobase({
+      apiKey: process.env.COCOBASE_API_KEY,
+    });
+
+    // Profile
+    async function getProfile(userId: string) {
+      return await db.getDocument("users", userId);
+    }
+
+    async function updateProfile(data: Partial<User>) {
+      const user = await db.auth.getUser();
+      return await db.updateDocument("users", user.id, data);
+    }
+
+    // Posts
+    async function createPost(content: string, images?: string[]) {
+      const user = await db.auth.getUser();
+      const profile = await getProfile(user.id);
+
+      return await db.createDocument("posts", {
+        authorId: user.id,
+        authorName: profile.data.displayName,
+        authorAvatar: profile.data.avatar,
+        content,
+        images,
+        likesCount: 0,
+        commentsCount: 0,
+        createdAt: new Date().toISOString(),
+      });
+    }
+
+    async function getFeed() {
+      const user = await db.auth.getUser();
+
+      // Get list of users we follow
+      const following = await db.listDocuments("follows", {
+        filters: { followerId: user.id },
+      });
+      const followingIds = following.map((f) => f.data.followingId);
+
+      // Include own posts
+      followingIds.push(user.id);
+
+      // Get posts from followed users
+      return await db.listDocuments("posts", {
+        query: new QueryBuilder()
+          .whereIn("authorId", followingIds)
+          .orderByDesc("createdAt")
+          .limit(20),
+      });
+    }
+
+    async function getUserPosts(userId: string) {
+      return await db.listDocuments("posts", {
+        filters: {
+          authorId: userId,
+          orderBy: "createdAt",
+          order: "desc",
+          limit: 20,
+        },
+      });
+    }
+
+    // Likes
+    async function likePost(postId: string) {
+      const user = await db.auth.getUser();
+
+      // Check if already liked
+      const existing = await db.listDocuments("likes", {
+        filters: { postId, userId: user.id },
+      });
+
+      if (existing.length > 0) {
+        return; // Already liked
+      }
+
+      // Create like
+      await db.createDocument("likes", {
+        postId,
+        userId: user.id,
+        createdAt: new Date().toISOString(),
+      });
+
+      // Increment like count
+      const post = await db.getDocument("posts", postId);
+      await db.updateDocument("posts", postId, {
+        likesCount: post.data.likesCount + 1,
+      });
+    }
+
+    async function unlikePost(postId: string) {
+      const user = await db.auth.getUser();
+
+      const existing = await db.listDocuments("likes", {
+        filters: { postId, userId: user.id },
+      });
+
+      if (existing.length === 0) {
+        return; // Not liked
+      }
+
+      // Delete like
+      await db.deleteDocument("likes", existing[0].id);
+
+      // Decrement like count
+      const post = await db.getDocument("posts", postId);
+      await db.updateDocument("posts", postId, {
+        likesCount: Math.max(0, post.data.likesCount - 1),
+      });
+    }
+
+    // Comments
+    async function addComment(postId: string, content: string) {
+      const user = await db.auth.getUser();
+      const profile = await getProfile(user.id);
+
+      await db.createDocument("comments", {
+        postId,
+        authorId: user.id,
+        authorName: profile.data.displayName,
+        content,
+        createdAt: new Date().toISOString(),
+      });
+
+      // Increment comment count
+      const post = await db.getDocument("posts", postId);
+      await db.updateDocument("posts", postId, {
+        commentsCount: post.data.commentsCount + 1,
+      });
+    }
+
+    async function getComments(postId: string) {
+      return await db.listDocuments("comments", {
+        filters: {
+          postId,
+          orderBy: "createdAt",
+          order: "asc",
+        },
+      });
+    }
+
+    // Follow
+    async function followUser(userId: string) {
+      const currentUser = await db.auth.getUser();
+
+      if (userId === currentUser.id) {
+        throw new Error("Cannot follow yourself");
+      }
+
+      const existing = await db.listDocuments("follows", {
+        filters: {
+          followerId: currentUser.id,
+          followingId: userId,
+        },
+      });
+
+      if (existing.length > 0) {
+        return; // Already following
+      }
+
+      await db.createDocument("follows", {
+        followerId: currentUser.id,
+        followingId: userId,
+        createdAt: new Date().toISOString(),
+      });
+
+      // Update counts
+      const currentProfile = await getProfile(currentUser.id);
+      const targetProfile = await getProfile(userId);
+
+      await db.updateDocument("users", currentUser.id, {
+        followingCount: currentProfile.data.followingCount + 1,
+      });
+      await db.updateDocument("users", userId, {
+        followersCount: targetProfile.data.followersCount + 1,
+      });
+    }
+
+    async function unfollowUser(userId: string) {
+      const currentUser = await db.auth.getUser();
+
+      const existing = await db.listDocuments("follows", {
+        filters: {
+          followerId: currentUser.id,
+          followingId: userId,
+        },
+      });
+
+      if (existing.length === 0) {
+        return; // Not following
+      }
+
+      await db.deleteDocument("follows", existing[0].id);
+
+      // Update counts
+      const currentProfile = await getProfile(currentUser.id);
+      const targetProfile = await getProfile(userId);
+
+      await db.updateDocument("users", currentUser.id, {
+        followingCount: Math.max(0, currentProfile.data.followingCount - 1),
+      });
+      await db.updateDocument("users", userId, {
+        followersCount: Math.max(0, targetProfile.data.followersCount - 1),
+      });
+    }
+
+    // Real-time feed updates
+    function watchFeed(callback: (event: any) => void) {
+      return db.watchCollection("posts", callback);
+    }
+    ```
+  </Tab>
+
+  <Tab title="Flutter">
+    ```dart
+    import 'package:cocobase_flutter/cocobase_flutter.dart';
+
+    class SocialMediaService {
+      final Cocobase db;
+
+      SocialMediaService(this.db);
+
+      // Posts
+      Future<Document> createPost(String content, {List<String>? images}) async {
+        final user = await db.auth.getUser();
+        final profile = await db.getDocument('users', user!.id);
+
+        return await db.createDocument('posts', {
+          'authorId': user.id,
+          'authorName': profile.data['displayName'],
+          'authorAvatar': profile.data['avatar'],
+          'content': content,
+          'images': images,
+          'likesCount': 0,
+          'commentsCount': 0,
+          'createdAt': DateTime.now().toIso8601String(),
+        });
+      }
+
+      Future<List<Document>> getFeed() async {
+        final user = await db.auth.getUser();
+
+        // Get followed users
+        final following = await db.listDocuments('follows', filters: {
+          'followerId': user!.id,
+        });
+        final followingIds = following
+            .map((f) => f.data['followingId'] as String)
+            .toList();
+        followingIds.add(user.id);
+
+        return await db.listDocuments('posts',
+          queryBuilder: QueryBuilder()
+            .whereIn('authorId', followingIds)
+            .orderByDesc('createdAt')
+            .limit(20),
+        );
+      }
+
+      // Likes
+      Future<void> likePost(String postId) async {
+        final user = await db.auth.getUser();
+
+        final existing = await db.listDocuments('likes', filters: {
+          'postId': postId,
+          'userId': user!.id,
+        });
+
+        if (existing.isNotEmpty) return;
+
+        await db.createDocument('likes', {
+          'postId': postId,
+          'userId': user.id,
+          'createdAt': DateTime.now().toIso8601String(),
+        });
+
+        final post = await db.getDocument('posts', postId);
+        await db.updateDocument('posts', postId, {
+          'likesCount': (post.data['likesCount'] as int) + 1,
+        });
+      }
+
+      // Follow
+      Future<void> followUser(String userId) async {
+        final currentUser = await db.auth.getUser();
+
+        if (userId == currentUser!.id) {
+          throw Exception('Cannot follow yourself');
+        }
+
+        final existing = await db.listDocuments('follows', filters: {
+          'followerId': currentUser.id,
+          'followingId': userId,
+        });
+
+        if (existing.isNotEmpty) return;
+
+        await db.createDocument('follows', {
+          'followerId': currentUser.id,
+          'followingId': userId,
+          'createdAt': DateTime.now().toIso8601String(),
+        });
+
+        // Update counts
+        final currentProfile = await db.getDocument('users', currentUser.id);
+        final targetProfile = await db.getDocument('users', userId);
+
+        await db.updateDocument('users', currentUser.id, {
+          'followingCount': (currentProfile.data['followingCount'] as int) + 1,
+        });
+        await db.updateDocument('users', userId, {
+          'followersCount': (targetProfile.data['followersCount'] as int) + 1,
+        });
+      }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+---
+
+## Key Concepts Demonstrated
+
+1. **Denormalization** - Author info stored in posts for fast reads
+2. **Count Fields** - Pre-computed like/comment/follower counts
+3. **Many-to-Many** - Follow relationships between users
+4. **Feed Generation** - Query posts from followed users
+5. **Real-time Updates** - Live feed with new posts
+
+---
+
+## Next Steps
+
+<CardGroup cols="2">
+  <Card title="Chat App" icon="comments" href="/examples/chat-app">
+    Build real-time chat
+  </Card>
+  <Card title="Todo App" icon="check" href="/examples/todo-app">
+    Build a todo app
+  </Card>
+</CardGroup>

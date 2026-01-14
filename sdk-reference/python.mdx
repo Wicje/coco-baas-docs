@@ -1,0 +1,422 @@
+---
+title: Python SDK
+description: Complete guide to using Cocobase with Python
+---
+
+# Python SDK
+
+Complete guide to using Cocobase with Python applications and Cloud Functions.
+
+## Installation
+
+```bash
+pip install cocobase
+```
+
+## Quick Start
+
+### Initialize Cocobase
+
+```python
+from cocobase import Cocobase
+
+db = Cocobase(
+    api_key="YOUR_API_KEY",
+    base_url="https://api.cocobase.buzz"  # Optional
+)
+```
+
+### Basic Operations
+
+```python
+# List documents
+docs = db.list_documents("posts")
+
+# Get single document
+doc = db.get_document("posts", "doc-id")
+
+# Create document
+created = db.create_document("posts", {
+    "title": "My First Post",
+    "content": "Hello World!"
+})
+
+# Update document
+db.update_document("posts", "doc-id", {
+    "title": "Updated Title"
+})
+
+# Delete document
+db.delete_document("posts", "doc-id")
+```
+
+---
+
+## Querying Data
+
+### Simple Filters
+
+```python
+# Find active users older than 18
+users = db.list_documents("users", filters={
+    "status": "active",
+    "age__gt": 18
+})
+```
+
+### Query Builder
+
+```python
+from cocobase import QueryBuilder
+
+query = (QueryBuilder()
+    .where("status", "active")
+    .where_greater_than("age", 18)
+    .where_contains("email", "@gmail.com")
+    .order_by_desc("createdAt")
+    .limit(10))
+
+users = db.list_documents("users", query=query)
+```
+
+---
+
+## Operators Reference
+
+### Comparison Operators
+
+| Operator | Filter Key | Example |
+|----------|-----------|---------|
+| Equal | `field` | `{"status": "active"}` |
+| Greater Than | `field__gt` | `{"age__gt": 18}` |
+| Greater or Equal | `field__gte` | `{"age__gte": 18}` |
+| Less Than | `field__lt` | `{"age__lt": 65}` |
+| Less or Equal | `field__lte` | `{"age__lte": 65}` |
+| Not Equal | `field__ne` | `{"status__ne": "deleted"}` |
+
+### String Operators
+
+| Operator | Filter Key | Example |
+|----------|-----------|---------|
+| Contains | `field__contains` | `{"title__contains": "python"}` |
+| Starts With | `field__startswith` | `{"email__startswith": "admin"}` |
+| Ends With | `field__endswith` | `{"domain__endswith": ".com"}` |
+
+### Array Operators
+
+| Operator | Filter Key | Example |
+|----------|-----------|---------|
+| In Array | `field__in` | `{"status__in": "active,pending"}` |
+| Not In Array | `field__notin` | `{"status__notin": "deleted,archived"}` |
+
+---
+
+## Sorting and Pagination
+
+### Sorting
+
+```python
+# Sort by creation date (newest first)
+posts = db.list_documents("posts", filters={
+    "orderBy": "createdAt",
+    "order": "desc"
+})
+```
+
+### Pagination
+
+```python
+# Get page 3 (20 items per page)
+posts = db.list_documents("posts", filters={
+    "limit": 20,
+    "offset": 40
+})
+```
+
+---
+
+## Working with Dataclasses
+
+### Define Your Types
+
+```python
+from dataclasses import dataclass
+from typing import Optional
+
+@dataclass
+class Book:
+    title: str
+    author: str
+    price: float
+    published_at: Optional[str] = None
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Book":
+        return cls(
+            title=data["title"],
+            author=data["author"],
+            price=data["price"],
+            published_at=data.get("publishedAt")
+        )
+
+    def to_dict(self) -> dict:
+        return {
+            "title": self.title,
+            "author": self.author,
+            "price": self.price,
+            "publishedAt": self.published_at
+        }
+```
+
+### Create with Dataclasses
+
+```python
+new_book = Book(
+    title="Clean Code",
+    author="Robert Martin",
+    price=45.99
+)
+
+created = db.create_document("books", new_book.to_dict())
+```
+
+### Parse Response to Dataclass
+
+```python
+doc = db.get_document("books", "doc-id")
+book = Book.from_dict(doc.data)
+print(book.title)
+```
+
+---
+
+## Authentication
+
+### Email/Password
+
+```python
+# Register
+db.auth.register(
+    email="user@example.com",
+    password="securePassword123"
+)
+
+# Get user after registration
+user = db.auth.get_user()
+print(f"User ID: {user.id}")
+
+# Login
+db.auth.login(
+    email="user@example.com",
+    password="securePassword123"
+)
+
+# Get user after login
+user = db.auth.get_user()
+
+# Logout
+db.auth.logout()
+
+# Check current user
+current_user = db.auth.current_user
+```
+
+### OAuth
+
+```python
+# Google OAuth
+db.auth.sign_in_with_google()
+user = db.auth.get_user()
+
+# GitHub OAuth
+db.auth.sign_in_with_github()
+user = db.auth.get_user()
+```
+
+---
+
+## Cloud Functions
+
+The Python SDK is primarily used in Cocobase Cloud Functions.
+
+### Basic Cloud Function
+
+```python
+def main():
+    from cocobase import Cocobase
+
+    db = Cocobase()  # Auto-configured in cloud environment
+
+    # Your function logic here
+    docs = db.list_documents("posts", filters={"limit": 10})
+
+    return {
+        "success": True,
+        "count": len(docs)
+    }
+```
+
+### Triggered Cloud Function
+
+```python
+def main(event):
+    from cocobase import Cocobase
+
+    db = Cocobase()
+
+    # Access trigger data
+    document = event.get("document")
+    trigger_type = event.get("type")  # created, updated, deleted
+
+    if trigger_type == "created":
+        # Send welcome email
+        db.email.send(
+            to=document["data"]["email"],
+            template="welcome",
+            variables={"name": document["data"]["name"]}
+        )
+
+    return {"success": True}
+```
+
+### Scheduled Cloud Function
+
+```python
+def main():
+    from cocobase import Cocobase
+    from datetime import datetime, timedelta
+
+    db = Cocobase()
+
+    # Clean up old documents
+    cutoff = (datetime.now() - timedelta(days=30)).isoformat()
+
+    old_docs = db.list_documents("logs", filters={
+        "createdAt__lt": cutoff,
+        "limit": 100
+    })
+
+    for doc in old_docs:
+        db.delete_document("logs", doc.id)
+
+    return {
+        "success": True,
+        "deleted": len(old_docs)
+    }
+```
+
+---
+
+## Error Handling
+
+```python
+from cocobase.exceptions import NotFoundError, UnauthorizedError, CocobaseError
+
+try:
+    doc = db.get_document("posts", "non-existent-id")
+except NotFoundError:
+    print("Document not found")
+except UnauthorizedError:
+    print("Not authorized")
+except CocobaseError as e:
+    print(f"Error: {e.message}")
+```
+
+---
+
+## Async Support
+
+```python
+import asyncio
+from cocobase import AsyncCocobase
+
+async def main():
+    db = AsyncCocobase(api_key="YOUR_API_KEY")
+
+    # Async operations
+    docs = await db.list_documents("posts")
+    doc = await db.get_document("posts", "doc-id")
+
+    # Concurrent requests
+    results = await asyncio.gather(
+        db.get_document("posts", "id1"),
+        db.get_document("posts", "id2"),
+        db.get_document("posts", "id3")
+    )
+
+    await db.close()
+
+asyncio.run(main())
+```
+
+---
+
+## Best Practices
+
+### 1. Use Dataclasses for Type Safety
+
+```python
+# Good
+@dataclass
+class Post:
+    title: str
+    content: str
+
+post = Post.from_dict(doc.data)
+print(post.title)
+
+# Avoid
+print(doc.data["title"])
+```
+
+### 2. Always Handle Errors
+
+```python
+try:
+    doc = db.get_document("posts", post_id)
+    return doc
+except NotFoundError:
+    return None
+except CocobaseError as e:
+    logger.error(f"Failed to get post: {e}")
+    raise
+```
+
+### 3. Use Environment Variables
+
+```python
+import os
+
+db = Cocobase(
+    api_key=os.environ.get("COCOBASE_API_KEY")
+)
+```
+
+### 4. Always Set Limits
+
+```python
+# Good
+docs = db.list_documents("posts", filters={"limit": 20})
+
+# Bad - could return thousands
+docs = db.list_documents("posts")
+```
+
+### 5. Use Context Managers
+
+```python
+from cocobase import Cocobase
+
+with Cocobase(api_key="YOUR_KEY") as db:
+    docs = db.list_documents("posts")
+    # Connection automatically closed
+```
+
+---
+
+## Next Steps
+
+- [Cloud Functions](/cloud-functions/introduction) - Build serverless functions
+- [JavaScript SDK](/sdk-reference/javascript) - Learn about the JS/TS SDK
+- [Flutter SDK](/sdk-reference/flutter) - Learn about the Flutter SDK
+- [Authentication](/core-concepts/authentication) - Deep dive into auth

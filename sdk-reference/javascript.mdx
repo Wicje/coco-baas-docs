@@ -1,0 +1,368 @@
+---
+title: JavaScript SDK
+description: Complete guide to using Cocobase with JavaScript and TypeScript
+---
+
+# JavaScript SDK
+
+Complete guide to using Cocobase with JavaScript and TypeScript applications.
+
+## Installation
+
+**npm:**
+
+```bash
+npm install cocobase
+```
+
+**yarn:**
+
+```bash
+yarn add cocobase
+```
+
+**pnpm:**
+
+```bash
+pnpm add cocobase
+```
+
+## Quick Start
+
+### Initialize Cocobase
+
+```typescript
+import { Cocobase } from "cocobase";
+
+const db = new Cocobase({
+  apiKey: "YOUR_API_KEY",
+  baseUrl: "https://api.cocobase.buzz", // Optional, defaults to this
+});
+```
+
+### Basic Operations
+
+```typescript
+// List documents
+const docs = await db.listDocuments("posts");
+
+// Get single document
+const doc = await db.getDocument("posts", "doc-id");
+
+// Create document
+const created = await db.createDocument("posts", {
+  title: "My First Post",
+  content: "Hello World!",
+});
+
+// Update document
+await db.updateDocument("posts", "doc-id", {
+  title: "Updated Title",
+});
+
+// Delete document
+await db.deleteDocument("posts", "doc-id");
+```
+
+---
+
+## Querying Data
+
+### Simple Filters
+
+```typescript
+// Find active users older than 18
+const users = await db.listDocuments("users", {
+  filters: {
+    status: "active",
+    age__gt: 18,
+  },
+});
+```
+
+### Query Builder
+
+```typescript
+import { QueryBuilder } from "cocobase";
+
+const users = await db.listDocuments("users", {
+  query: new QueryBuilder()
+    .where("status", "active")
+    .whereGreaterThan("age", 18)
+    .whereContains("email", "@gmail.com")
+    .orderByDesc("createdAt")
+    .limit(10),
+});
+```
+
+---
+
+## Operators Reference
+
+### Comparison Operators
+
+| Operator | Filter Key | Example |
+|----------|-----------|---------|
+| Equal | `field` | `{ status: "active" }` |
+| Greater Than | `field__gt` | `{ age__gt: 18 }` |
+| Greater or Equal | `field__gte` | `{ age__gte: 18 }` |
+| Less Than | `field__lt` | `{ age__lt: 65 }` |
+| Less or Equal | `field__lte` | `{ age__lte: 65 }` |
+| Not Equal | `field__ne` | `{ status__ne: "deleted" }` |
+
+### String Operators
+
+| Operator | Filter Key | Example |
+|----------|-----------|---------|
+| Contains | `field__contains` | `{ title__contains: "javascript" }` |
+| Starts With | `field__startswith` | `{ email__startswith: "admin" }` |
+| Ends With | `field__endswith` | `{ domain__endswith: ".com" }` |
+
+### Array Operators
+
+| Operator | Filter Key | Example |
+|----------|-----------|---------|
+| In Array | `field__in` | `{ status__in: "active,pending" }` |
+| Not In Array | `field__notin` | `{ status__notin: "deleted,archived" }` |
+
+---
+
+## Sorting and Pagination
+
+### Sorting
+
+```typescript
+// Sort by creation date (newest first)
+const posts = await db.listDocuments("posts", {
+  filters: {
+    orderBy: "createdAt",
+    order: "desc",
+  },
+});
+```
+
+### Pagination
+
+```typescript
+// Get page 3 (20 items per page)
+const posts = await db.listDocuments("posts", {
+  filters: {
+    limit: 20,
+    offset: 40,
+  },
+});
+```
+
+---
+
+## Type Safety with TypeScript
+
+### Define Your Types
+
+```typescript
+interface Book {
+  title: string;
+  author: string;
+  price: number;
+  publishedAt?: string;
+}
+
+// Typed list
+const books = await db.listDocuments<Book>("books");
+
+// Full type safety
+books.forEach((doc) => {
+  console.log(doc.data.title); // TypeScript knows this is a string
+  console.log(doc.data.price); // TypeScript knows this is a number
+});
+
+// Typed single document
+const book = await db.getDocument<Book>("books", "doc-id");
+console.log(book.data.author);
+```
+
+### Create Typed Documents
+
+```typescript
+const newBook: Book = {
+  title: "Clean Code",
+  author: "Robert Martin",
+  price: 45.99,
+};
+
+const created = await db.createDocument<Book>("books", newBook);
+console.log(created.id);
+```
+
+---
+
+## Authentication
+
+### Email/Password
+
+```typescript
+// Register
+await db.auth.register({
+  email: "user@example.com",
+  password: "securePassword123",
+});
+
+// Get user after registration
+const user = await db.auth.getUser();
+console.log("User ID:", user.id);
+
+// Login
+await db.auth.login({
+  email: "user@example.com",
+  password: "securePassword123",
+});
+
+// Get user after login
+const loggedInUser = await db.auth.getUser();
+
+// Logout
+await db.auth.logout();
+
+// Check current user
+const currentUser = db.auth.currentUser;
+```
+
+### OAuth
+
+```typescript
+// Google OAuth
+await db.auth.signInWithGoogle();
+const user = await db.auth.getUser();
+
+// GitHub OAuth
+await db.auth.signInWithGitHub();
+const user = await db.auth.getUser();
+```
+
+---
+
+## Real-time Data
+
+### Watch Collection
+
+```typescript
+// Watch for changes
+const unsubscribe = db.watchCollection("posts", (event) => {
+  console.log("Event type:", event.type); // created, updated, deleted
+  console.log("Document:", event.document);
+});
+
+// Stop watching
+unsubscribe();
+```
+
+### Watch Document
+
+```typescript
+const unsubscribe = db.watchDocument("posts", "doc-id", (document) => {
+  console.log("Document updated:", document.data);
+});
+
+// Stop watching
+unsubscribe();
+```
+
+---
+
+## File Storage
+
+### Upload Files
+
+```typescript
+// Upload a file
+const file = document.getElementById("fileInput").files[0];
+const uploaded = await db.storage.upload(file);
+console.log("File URL:", uploaded.url);
+
+// Upload with document
+const doc = await db.createDocumentWithFiles("posts", {
+  title: "Post with Image",
+  content: "Check out this image!",
+}, {
+  image: file,
+});
+```
+
+### Download Files
+
+```typescript
+const fileUrl = await db.storage.getUrl("file-id");
+```
+
+---
+
+## Error Handling
+
+```typescript
+try {
+  const doc = await db.getDocument("posts", "non-existent-id");
+} catch (error) {
+  if (error.code === "NOT_FOUND") {
+    console.log("Document not found");
+  } else if (error.code === "UNAUTHORIZED") {
+    console.log("Not authorized");
+  } else {
+    console.log("Error:", error.message);
+  }
+}
+```
+
+---
+
+## Best Practices
+
+### 1. Always Use Types
+
+```typescript
+// Good
+const books = await db.listDocuments<Book>("books");
+
+// Avoid
+const books = await db.listDocuments("books");
+```
+
+### 2. Always Set Limits
+
+```typescript
+// Good
+const posts = await db.listDocuments("posts", {
+  filters: { limit: 20 },
+});
+
+// Bad - could return thousands
+const posts = await db.listDocuments("posts");
+```
+
+### 3. Handle Errors
+
+```typescript
+try {
+  const doc = await db.getDocument("posts", id);
+  return doc;
+} catch (error) {
+  console.error("Failed to fetch:", error);
+  return null;
+}
+```
+
+### 4. Use Environment Variables
+
+```typescript
+const db = new Cocobase({
+  apiKey: process.env.COCOBASE_API_KEY,
+});
+```
+
+---
+
+## Next Steps
+
+- [Flutter SDK](/sdk-reference/flutter) - Learn about the Flutter SDK
+- [Authentication](/core-concepts/authentication) - Deep dive into auth
+- [Querying](/features/querying) - Advanced query techniques
+- [Real-time](/features/realtime) - Real-time data synchronization

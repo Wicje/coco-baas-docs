@@ -1,0 +1,453 @@
+---
+title: Performance Optimization
+description: Optimize your Cocobase application for speed and efficiency
+---
+
+# Performance Optimization
+
+Learn how to optimize your Cocobase application for maximum speed and efficiency.
+
+## Query Optimization
+
+### Always Use Limits
+
+```typescript
+// BAD - Could return thousands of documents
+const allPosts = await db.listDocuments("posts");
+
+// GOOD - Limit results
+const posts = await db.listDocuments("posts", {
+  filters: { limit: 20 },
+});
+```
+
+### Select Only Required Fields
+
+```typescript
+// BAD - Returns all fields including large content
+const posts = await db.listDocuments("posts");
+
+// GOOD - Select only needed fields
+const posts = await db.listDocuments("posts", {
+  query: new QueryBuilder()
+    .select("title")
+    .select("author")
+    .select("createdAt")
+    .limit(20),
+});
+```
+
+### Use Efficient Filters
+
+```typescript
+// BAD - Inefficient contains search on large fields
+const posts = await db.listDocuments("posts", {
+  filters: { content__contains: "search term" },
+});
+
+// GOOD - Search on indexed fields first
+const posts = await db.listDocuments("posts", {
+  filters: {
+    status: "published",
+    category: "technology",
+    title__contains: "search term",
+    limit: 20,
+  },
+});
+```
+
+---
+
+## Pagination Strategies
+
+### Offset Pagination
+
+Good for small datasets with random page access:
+
+```typescript
+async function getPage(page: number, pageSize: number = 20) {
+  return await db.listDocuments("posts", {
+    filters: {
+      limit: pageSize,
+      offset: (page - 1) * pageSize,
+      orderBy: "createdAt",
+      order: "desc",
+    },
+  });
+}
+
+// Usage
+const page1 = await getPage(1);
+const page5 = await getPage(5);
+```
+
+### Cursor Pagination
+
+Better for large datasets and infinite scroll:
+
+```typescript
+async function getNextPage(lastDocId?: string, pageSize: number = 20) {
+  const filters: any = {
+    limit: pageSize,
+    orderBy: "createdAt",
+    order: "desc",
+  };
+
+  if (lastDocId) {
+    // Get the timestamp of the last document
+    const lastDoc = await db.getDocument("posts", lastDocId);
+    filters.createdAt__lt = lastDoc.data.createdAt;
+  }
+
+  return await db.listDocuments("posts", { filters });
+}
+
+// Usage for infinite scroll
+let lastId: string | undefined;
+const firstPage = await getNextPage();
+lastId = firstPage[firstPage.length - 1]?.id;
+
+// Load more
+const nextPage = await getNextPage(lastId);
+```
+
+---
+
+## Caching Strategies
+
+### In-Memory Caching
+
+```typescript
+const cache = new Map<string, { data: any; expiry: number }>();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+async function getCachedDocument(collection: string, id: string) {
+  const cacheKey = `${collection}:${id}`;
+  const cached = cache.get(cacheKey);
+
+  if (cached && cached.expiry > Date.now()) {
+    return cached.data;
+  }
+
+  const doc = await db.getDocument(collection, id);
+  cache.set(cacheKey, {
+    data: doc,
+    expiry: Date.now() + CACHE_TTL,
+  });
+
+  return doc;
+}
+
+// Invalidate cache on updates
+async function updateDocument(collection: string, id: string, data: any) {
+  await db.updateDocument(collection, id, data);
+  cache.delete(`${collection}:${id}`);
+}
+```
+
+### React Query / SWR Integration
+
+```typescript
+// With React Query
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+
+function usePosts() {
+  return useQuery({
+    queryKey: ["posts"],
+    queryFn: () => db.listDocuments("posts", { filters: { limit: 20 } }),
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  });
+}
+
+function useCreatePost() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: any) => db.createDocument("posts", data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["posts"] });
+    },
+  });
+}
+```
+
+### Flutter Caching
+
+```dart
+class CachedCocobase {
+  final Cocobase db;
+  final Map<String, CacheEntry> _cache = {};
+  final Duration cacheDuration;
+
+  CachedCocobase(this.db, {this.cacheDuration = const Duration(minutes: 5)});
+
+  Future<Document> getCachedDocument(String collection, String id) async {
+    final key = '$collection:$id';
+    final cached = _cache[key];
+
+    if (cached != null && !cached.isExpired) {
+      return cached.data;
+    }
+
+    final doc = await db.getDocument(collection, id);
+    _cache[key] = CacheEntry(doc, DateTime.now().add(cacheDuration));
+    return doc;
+  }
+
+  void invalidate(String collection, String id) {
+    _cache.remove('$collection:$id');
+  }
+}
+
+class CacheEntry {
+  final dynamic data;
+  final DateTime expiry;
+
+  CacheEntry(this.data, this.expiry);
+
+  bool get isExpired => DateTime.now().isAfter(expiry);
+}
+```
+
+---
+
+## Batch Operations
+
+### Batch Creates
+
+```typescript
+// BAD - Multiple network requests
+for (const item of items) {
+  await db.createDocument("items", item);
+}
+
+// GOOD - Single batch request
+const results = await db.batchCreateDocuments("items", items);
+```
+
+### Batch Updates
+
+```typescript
+// BAD - Multiple requests
+for (const id of ids) {
+  await db.updateDocument("items", id, { status: "processed" });
+}
+
+// GOOD - Batch update
+await db.batchUpdateDocuments("items", ids, { status: "processed" });
+```
+
+### Parallel Fetching
+
+```typescript
+// BAD - Sequential fetches
+const user = await db.getDocument("users", userId);
+const posts = await db.listDocuments("posts", { filters: { authorId: userId } });
+const comments = await db.listDocuments("comments", { filters: { userId } });
+
+// GOOD - Parallel fetches
+const [user, posts, comments] = await Promise.all([
+  db.getDocument("users", userId),
+  db.listDocuments("posts", { filters: { authorId: userId, limit: 20 } }),
+  db.listDocuments("comments", { filters: { userId, limit: 50 } }),
+]);
+```
+
+---
+
+## Real-time Optimization
+
+### Debounce Updates
+
+```typescript
+import { debounce } from "lodash";
+
+// Debounce rapid updates
+const debouncedUpdate = debounce(
+  async (collection: string, id: string, data: any) => {
+    await db.updateDocument(collection, id, data);
+  },
+  500 // Wait 500ms after last change
+);
+
+// Use in form inputs
+function handleInputChange(field: string, value: string) {
+  setFormData({ ...formData, [field]: value });
+  debouncedUpdate("drafts", draftId, { [field]: value });
+}
+```
+
+### Selective Real-time Subscriptions
+
+```typescript
+// BAD - Watch entire collection
+db.watchCollection("messages", handleMessage);
+
+// GOOD - Watch specific subset
+db.watchCollection("messages", handleMessage, {
+  filters: {
+    roomId: currentRoomId,
+    createdAt__gte: new Date().toISOString(),
+  },
+});
+```
+
+### Cleanup Subscriptions
+
+```typescript
+// React component example
+useEffect(() => {
+  const unsubscribe = db.watchCollection("posts", (event) => {
+    // Handle event
+  });
+
+  // Clean up on unmount
+  return () => unsubscribe();
+}, []);
+```
+
+---
+
+## Image and File Optimization
+
+### Lazy Loading Images
+
+```typescript
+// Use native lazy loading
+<img src={imageUrl} loading="lazy" alt="Description" />
+
+// Or Intersection Observer
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach((entry) => {
+    if (entry.isIntersecting) {
+      const img = entry.target as HTMLImageElement;
+      img.src = img.dataset.src!;
+      observer.unobserve(img);
+    }
+  });
+});
+```
+
+### Compress Before Upload
+
+```typescript
+async function compressImage(file: File, maxWidth: number = 1200): Promise<Blob> {
+  return new Promise((resolve) => {
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d")!;
+    const img = new Image();
+
+    img.onload = () => {
+      const ratio = Math.min(maxWidth / img.width, 1);
+      canvas.width = img.width * ratio;
+      canvas.height = img.height * ratio;
+
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      canvas.toBlob((blob) => resolve(blob!), "image/jpeg", 0.8);
+    };
+
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+// Use before upload
+const compressedImage = await compressImage(originalFile);
+await db.storage.upload(compressedImage);
+```
+
+---
+
+## Database Design Tips
+
+### Denormalize for Read Performance
+
+```typescript
+// Normalized (more queries needed)
+const post = await db.getDocument("posts", postId);
+const author = await db.getDocument("users", post.data.authorId);
+
+// Denormalized (single query)
+const post = await db.getDocument("posts", postId);
+// post.data.authorName already included
+```
+
+### Use Computed Fields
+
+```typescript
+// Store computed values at write time
+await db.createDocument("orders", {
+  items: orderItems,
+  itemCount: orderItems.length, // Computed
+  totalPrice: orderItems.reduce((sum, item) => sum + item.price, 0), // Computed
+});
+
+// Query efficiently
+const largeOrders = await db.listDocuments("orders", {
+  filters: {
+    totalPrice__gte: 100,
+    itemCount__gte: 5,
+  },
+});
+```
+
+---
+
+## Monitoring Performance
+
+### Track Query Times
+
+```typescript
+async function timedQuery<T>(
+  name: string,
+  queryFn: () => Promise<T>
+): Promise<T> {
+  const start = performance.now();
+  const result = await queryFn();
+  const duration = performance.now() - start;
+
+  console.log(`Query "${name}" took ${duration.toFixed(2)}ms`);
+
+  // Log slow queries
+  if (duration > 1000) {
+    console.warn(`Slow query detected: ${name}`);
+  }
+
+  return result;
+}
+
+// Usage
+const posts = await timedQuery("list-posts", () =>
+  db.listDocuments("posts", { filters: { limit: 20 } })
+);
+```
+
+### Performance Checklist
+
+- [ ] All queries have limits
+- [ ] Using field selection where possible
+- [ ] Batch operations for multiple items
+- [ ] Caching frequently accessed data
+- [ ] Real-time subscriptions cleaned up
+- [ ] Images compressed before upload
+- [ ] Lazy loading for images
+- [ ] Parallel fetches where possible
+- [ ] Denormalized data for read-heavy paths
+
+---
+
+## Next Steps
+
+<CardGroup cols="2">
+  <Card title="Best Practices" icon="star" href="/guides/best-practices">
+    General development best practices
+  </Card>
+  <Card title="Security" icon="shield" href="/guides/security">
+    Secure your application
+  </Card>
+  <Card title="Querying" icon="filter" href="/features/querying">
+    Advanced query techniques
+  </Card>
+  <Card title="Real-time" icon="bolt" href="/features/realtime">
+    Real-time data sync
+  </Card>
+</CardGroup>

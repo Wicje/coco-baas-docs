@@ -1,0 +1,387 @@
+---
+title: Security Best Practices
+description: Comprehensive security guide for Cocobase applications
+---
+
+# Security Best Practices
+
+Learn how to secure your Cocobase applications and protect your users' data.
+
+## API Key Security
+
+### Never Expose API Keys
+
+```typescript
+// BAD - API key in client-side code
+const db = new Cocobase({
+  apiKey: "sk_live_abc123...", // Never do this!
+});
+
+// GOOD - Use environment variables
+const db = new Cocobase({
+  apiKey: process.env.COCOBASE_API_KEY,
+});
+```
+
+### Use Different Keys for Environments
+
+- **Development**: Use a separate API key for development
+- **Staging**: Use a separate API key for staging
+- **Production**: Use your production API key only in production
+
+### Rotate Keys Regularly
+
+1. Go to your [Cocobase Dashboard](https://cocobase.buzz/dashboard)
+2. Navigate to **Settings** > **API Keys**
+3. Click **Generate New Key**
+4. Update your applications with the new key
+5. Revoke the old key
+
+---
+
+## Authentication Security
+
+### Strong Password Requirements
+
+```typescript
+// Enforce strong passwords
+function validatePassword(password: string): boolean {
+  const minLength = 8;
+  const hasUppercase = /[A-Z]/.test(password);
+  const hasLowercase = /[a-z]/.test(password);
+  const hasNumber = /[0-9]/.test(password);
+  const hasSpecial = /[!@#$%^&*]/.test(password);
+
+  return (
+    password.length >= minLength &&
+    hasUppercase &&
+    hasLowercase &&
+    hasNumber &&
+    hasSpecial
+  );
+}
+```
+
+### Secure Session Management
+
+```typescript
+// Check authentication status
+const user = await db.auth.getUser();
+if (!user) {
+  // Redirect to login
+  window.location.href = "/login";
+}
+
+// Logout on inactivity
+let inactivityTimer: NodeJS.Timeout;
+
+function resetInactivityTimer() {
+  clearTimeout(inactivityTimer);
+  inactivityTimer = setTimeout(() => {
+    db.auth.logout();
+    window.location.href = "/login";
+  }, 30 * 60 * 1000); // 30 minutes
+}
+
+document.addEventListener("mousemove", resetInactivityTimer);
+document.addEventListener("keypress", resetInactivityTimer);
+```
+
+### OAuth Security
+
+```typescript
+// Always verify OAuth state
+await db.auth.signInWithGoogle({
+  state: generateSecureState(), // CSRF protection
+});
+```
+
+---
+
+## Data Protection
+
+### Input Validation
+
+Always validate user input before storing:
+
+```typescript
+function validateUserInput(data: any): boolean {
+  // Check for required fields
+  if (!data.email || !data.name) {
+    return false;
+  }
+
+  // Validate email format
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(data.email)) {
+    return false;
+  }
+
+  // Sanitize string fields
+  if (typeof data.name !== "string" || data.name.length > 100) {
+    return false;
+  }
+
+  return true;
+}
+
+// Use before creating documents
+if (validateUserInput(userData)) {
+  await db.createDocument("users", userData);
+}
+```
+
+### XSS Prevention
+
+```typescript
+// Sanitize HTML content
+function sanitizeHtml(input: string): string {
+  return input
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#x27;");
+}
+
+// Use when displaying user content
+const safeContent = sanitizeHtml(doc.data.content);
+```
+
+### SQL Injection Prevention
+
+Cocobase uses a NoSQL database and parameterized queries, but always validate filter inputs:
+
+```typescript
+// GOOD - Use the SDK's filter system
+const docs = await db.listDocuments("posts", {
+  filters: {
+    status: userInput, // SDK handles escaping
+  },
+});
+
+// BAD - Never construct query strings manually
+const query = `status=${userInput}`; // Vulnerable!
+```
+
+---
+
+## Access Control
+
+### Role-Based Permissions
+
+```typescript
+// Define roles
+const ROLES = {
+  ADMIN: "admin",
+  EDITOR: "editor",
+  VIEWER: "viewer",
+};
+
+// Check permissions before operations
+async function canEditDocument(userId: string, docId: string): Promise<boolean> {
+  const user = await db.getDocument("users", userId);
+  const doc = await db.getDocument("posts", docId);
+
+  // Admins can edit anything
+  if (user.data.role === ROLES.ADMIN) {
+    return true;
+  }
+
+  // Editors can edit their own documents
+  if (user.data.role === ROLES.EDITOR && doc.data.authorId === userId) {
+    return true;
+  }
+
+  return false;
+}
+```
+
+### Document-Level Security
+
+```typescript
+// Only fetch documents the user can access
+const userPosts = await db.listDocuments("posts", {
+  filters: {
+    authorId: currentUser.id, // Only user's own posts
+  },
+});
+```
+
+---
+
+## Network Security
+
+### Use HTTPS Only
+
+Cocobase API always uses HTTPS. Ensure your application also uses HTTPS:
+
+```typescript
+// Verify HTTPS in production
+if (process.env.NODE_ENV === "production" && !window.location.protocol.includes("https")) {
+  window.location.href = window.location.href.replace("http:", "https:");
+}
+```
+
+### CORS Configuration
+
+Configure allowed origins in your Cocobase dashboard:
+
+1. Go to **Settings** > **Security**
+2. Add your domain to **Allowed Origins**
+3. Remove any wildcard (`*`) entries in production
+
+---
+
+## Sensitive Data Handling
+
+### Never Store Sensitive Data in Plain Text
+
+```typescript
+// BAD - Plain text sensitive data
+await db.createDocument("users", {
+  creditCard: "4111111111111111", // Never do this!
+});
+
+// GOOD - Store only necessary references
+await db.createDocument("users", {
+  paymentMethodId: "pm_stripe_ref", // Reference to secure payment provider
+});
+```
+
+### PII Protection
+
+```typescript
+// Minimize PII storage
+await db.createDocument("users", {
+  email: user.email, // Necessary for auth
+  name: user.name, // Necessary for display
+  // Don't store: SSN, full address, date of birth unless required
+});
+```
+
+### Data Encryption
+
+For highly sensitive data, encrypt before storing:
+
+```typescript
+import { createCipheriv, createDecipheriv, randomBytes } from "crypto";
+
+const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY; // 32 bytes
+const IV_LENGTH = 16;
+
+function encrypt(text: string): string {
+  const iv = randomBytes(IV_LENGTH);
+  const cipher = createCipheriv("aes-256-cbc", Buffer.from(ENCRYPTION_KEY), iv);
+  let encrypted = cipher.update(text);
+  encrypted = Buffer.concat([encrypted, cipher.final()]);
+  return iv.toString("hex") + ":" + encrypted.toString("hex");
+}
+
+function decrypt(text: string): string {
+  const parts = text.split(":");
+  const iv = Buffer.from(parts[0], "hex");
+  const encryptedText = Buffer.from(parts[1], "hex");
+  const decipher = createDecipheriv("aes-256-cbc", Buffer.from(ENCRYPTION_KEY), iv);
+  let decrypted = decipher.update(encryptedText);
+  decrypted = Buffer.concat([decrypted, decipher.final()]);
+  return decrypted.toString();
+}
+```
+
+---
+
+## Audit Logging
+
+### Track Important Actions
+
+```typescript
+async function logAction(action: string, userId: string, details: any) {
+  await db.createDocument("audit_logs", {
+    action,
+    userId,
+    details,
+    timestamp: new Date().toISOString(),
+    ip: getClientIp(), // If available
+  });
+}
+
+// Use for sensitive operations
+await logAction("DELETE_USER", adminId, { deletedUserId: userId });
+```
+
+### Monitor Suspicious Activity
+
+```typescript
+async function checkSuspiciousActivity(userId: string): Promise<boolean> {
+  const recentLogs = await db.listDocuments("audit_logs", {
+    filters: {
+      userId,
+      timestamp__gte: new Date(Date.now() - 3600000).toISOString(), // Last hour
+      limit: 100,
+    },
+  });
+
+  // Flag if too many failed attempts
+  const failedAttempts = recentLogs.filter(
+    (log) => log.data.action === "LOGIN_FAILED"
+  );
+
+  return failedAttempts.length > 5;
+}
+```
+
+---
+
+## Security Checklist
+
+### Before Going to Production
+
+- [ ] API keys stored in environment variables
+- [ ] HTTPS enabled for all endpoints
+- [ ] CORS configured with specific domains
+- [ ] Input validation on all user inputs
+- [ ] XSS protection in place
+- [ ] Role-based access control implemented
+- [ ] Audit logging enabled
+- [ ] Password requirements enforced
+- [ ] Session timeout configured
+- [ ] Sensitive data encrypted or not stored
+
+### Regular Security Reviews
+
+- [ ] Review API key usage monthly
+- [ ] Check audit logs for anomalies weekly
+- [ ] Update dependencies for security patches
+- [ ] Test authentication flows quarterly
+- [ ] Review access permissions quarterly
+
+---
+
+## Reporting Security Issues
+
+If you discover a security vulnerability in Cocobase:
+
+1. **Do not** disclose it publicly
+2. Email security@cocobase.buzz with details
+3. Include steps to reproduce
+4. We'll respond within 24 hours
+
+---
+
+## Next Steps
+
+<CardGroup cols="2">
+  <Card title="Role-Based Access" icon="shield" href="/guides/role-based-access">
+    Configure user roles and permissions
+  </Card>
+  <Card title="Authentication" icon="lock" href="/core-concepts/authentication">
+    Learn about authentication options
+  </Card>
+  <Card title="Best Practices" icon="star" href="/guides/best-practices">
+    General development best practices
+  </Card>
+  <Card title="Troubleshooting" icon="wrench" href="/guides/troubleshooting">
+    Debug common security issues
+  </Card>
+</CardGroup>

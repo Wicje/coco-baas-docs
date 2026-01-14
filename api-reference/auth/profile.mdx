@@ -1,0 +1,169 @@
+---
+title: User Profile
+description: Get and update the current user's profile
+---
+
+# User Profile
+
+Get and update the current authenticated user's profile.
+
+## Get Profile
+
+### Endpoint
+
+```
+GET /auth/me
+```
+
+### Headers
+
+| Header | Required | Description |
+|--------|----------|-------------|
+| `Authorization` | Yes | Bearer token from login |
+
+### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "user_abc123",
+    "email": "user@example.com",
+    "name": "John Doe",
+    "avatar": "https://storage.cocobase.buzz/avatars/abc123.jpg",
+    "createdAt": "2024-01-15T10:30:00Z",
+    "updatedAt": "2024-01-15T10:30:00Z"
+  }
+}
+```
+
+### Example
+
+```bash
+curl https://api.cocobase.buzz/auth/me \
+  -H "Authorization: Bearer USER_JWT_TOKEN"
+```
+
+---
+
+## Update Profile
+
+### Endpoint
+
+```
+PATCH /auth/me
+```
+
+### Request Body
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `name` | string | Display name |
+| `avatar` | string | Avatar URL |
+
+```json
+{
+  "name": "Jane Doe",
+  "avatar": "https://example.com/avatar.jpg"
+}
+```
+
+### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "user_abc123",
+    "email": "user@example.com",
+    "name": "Jane Doe",
+    "avatar": "https://example.com/avatar.jpg",
+    "createdAt": "2024-01-15T10:30:00Z",
+    "updatedAt": "2024-01-16T09:00:00Z"
+  }
+}
+```
+
+### Example
+
+```bash
+curl -X PATCH https://api.cocobase.buzz/auth/me \
+  -H "Authorization: Bearer USER_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Jane Doe"
+  }'
+```
+
+---
+
+## Examples
+
+### JavaScript
+
+```javascript
+// Get profile
+const token = localStorage.getItem("authToken");
+
+const response = await fetch("https://api.cocobase.buzz/auth/me", {
+  headers: {
+    Authorization: `Bearer ${token}`,
+  },
+});
+
+const { data: user } = await response.json();
+console.log(user.name);
+
+// Update profile
+const updateResponse = await fetch("https://api.cocobase.buzz/auth/me", {
+  method: "PATCH",
+  headers: {
+    Authorization: `Bearer ${token}`,
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    name: "New Name",
+  }),
+});
+
+const { data: updatedUser } = await updateResponse.json();
+```
+
+### Python
+
+```python
+import requests
+
+token = "USER_JWT_TOKEN"
+headers = {"Authorization": f"Bearer {token}"}
+
+# Get profile
+response = requests.get(
+    "https://api.cocobase.buzz/auth/me",
+    headers=headers,
+)
+user = response.json()["data"]
+print(user["name"])
+
+# Update profile
+update_response = requests.patch(
+    "https://api.cocobase.buzz/auth/me",
+    headers={**headers, "Content-Type": "application/json"},
+    json={"name": "New Name"},
+)
+updated_user = update_response.json()["data"]
+```
+
+## Error Responses
+
+### Unauthorized
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "UNAUTHORIZED",
+    "message": "Authentication required"
+  }
+}
+```

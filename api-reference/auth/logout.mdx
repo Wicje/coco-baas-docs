@@ -1,0 +1,111 @@
+---
+title: Logout
+description: Invalidate the current user session
+---
+
+# Logout
+
+Invalidate the current user session and token.
+
+## Endpoint
+
+```
+POST /auth/logout
+```
+
+## Headers
+
+| Header | Required | Description |
+|--------|----------|-------------|
+| `Authorization` | Yes | Bearer token from login |
+
+## Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "message": "Successfully logged out"
+  }
+}
+```
+
+## Examples
+
+### cURL
+
+```bash
+curl -X POST https://api.cocobase.buzz/auth/logout \
+  -H "Authorization: Bearer USER_JWT_TOKEN"
+```
+
+### JavaScript
+
+```javascript
+const token = localStorage.getItem("authToken");
+
+const response = await fetch("https://api.cocobase.buzz/auth/logout", {
+  method: "POST",
+  headers: {
+    Authorization: `Bearer ${token}`,
+  },
+});
+
+const result = await response.json();
+
+if (result.success) {
+  // Clear local storage
+  localStorage.removeItem("authToken");
+  // Redirect to login
+  window.location.href = "/login";
+}
+```
+
+### Python
+
+```python
+import requests
+
+token = "USER_JWT_TOKEN"
+
+response = requests.post(
+    "https://api.cocobase.buzz/auth/logout",
+    headers={"Authorization": f"Bearer {token}"},
+)
+
+result = response.json()
+if result["success"]:
+    print("Logged out successfully")
+```
+
+## Notes
+
+- The token becomes invalid immediately after logout
+- Any subsequent requests with the same token will fail
+- Client should clear stored tokens after logout
+
+## Error Responses
+
+### Invalid Token
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "INVALID_TOKEN",
+    "message": "The provided token is invalid"
+  }
+}
+```
+
+### Token Expired
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "TOKEN_EXPIRED",
+    "message": "The token has already expired"
+  }
+}
+```

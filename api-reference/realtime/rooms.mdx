@@ -1,0 +1,313 @@
+---
+title: Presence & Rooms
+description: Real-time presence and room management
+---
+
+# Presence & Rooms
+
+Manage real-time presence and room membership.
+
+## Join Room
+
+### WebSocket Message
+
+```json
+{
+  "type": "join_room",
+  "room": "chat:room_123",
+  "userData": {
+    "userId": "user_abc",
+    "username": "John",
+    "avatar": "https://example.com/avatar.jpg"
+  }
+}
+```
+
+### Response
+
+```json
+{
+  "type": "room_joined",
+  "room": "chat:room_123",
+  "members": [
+    {
+      "userId": "user_abc",
+      "username": "John",
+      "avatar": "https://example.com/avatar.jpg",
+      "joinedAt": "2024-01-15T10:30:00Z"
+    }
+  ]
+}
+```
+
+---
+
+## Leave Room
+
+### WebSocket Message
+
+```json
+{
+  "type": "leave_room",
+  "room": "chat:room_123"
+}
+```
+
+### Response
+
+```json
+{
+  "type": "room_left",
+  "room": "chat:room_123"
+}
+```
+
+---
+
+## Presence Events
+
+When users join or leave, all room members receive events:
+
+### User Joined
+
+```json
+{
+  "type": "presence",
+  "room": "chat:room_123",
+  "event": "join",
+  "user": {
+    "userId": "user_def",
+    "username": "Jane",
+    "avatar": "https://example.com/jane.jpg"
+  }
+}
+```
+
+### User Left
+
+```json
+{
+  "type": "presence",
+  "room": "chat:room_123",
+  "event": "leave",
+  "user": {
+    "userId": "user_def"
+  }
+}
+```
+
+---
+
+## Get Room Members
+
+### REST Endpoint
+
+```
+GET /realtime/rooms/{room}/members
+```
+
+### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "room": "chat:room_123",
+    "members": [
+      {
+        "userId": "user_abc",
+        "username": "John",
+        "avatar": "https://example.com/avatar.jpg",
+        "status": "online",
+        "joinedAt": "2024-01-15T10:30:00Z"
+      },
+      {
+        "userId": "user_def",
+        "username": "Jane",
+        "status": "away",
+        "joinedAt": "2024-01-15T10:35:00Z"
+      }
+    ],
+    "count": 2
+  }
+}
+```
+
+### Example
+
+```bash
+curl https://api.cocobase.buzz/realtime/rooms/chat:room_123/members \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+---
+
+## Update Presence Status
+
+### WebSocket Message
+
+```json
+{
+  "type": "update_presence",
+  "status": "away",
+  "metadata": {
+    "lastActive": "2024-01-15T10:30:00Z"
+  }
+}
+```
+
+### Status Options
+
+| Status | Description |
+|--------|-------------|
+| `online` | User is active |
+| `away` | User is idle |
+| `busy` | Do not disturb |
+| `offline` | Disconnected |
+
+---
+
+## Complete Example
+
+### JavaScript
+
+```javascript
+const ws = new WebSocket("wss://api.cocobase.buzz/realtime");
+
+let currentRoom = null;
+
+ws.onopen = () => {
+  // Authenticate
+  ws.send(JSON.stringify({
+    type: "auth",
+    token: "YOUR_API_KEY",
+  }));
+};
+
+ws.onmessage = (event) => {
+  const data = JSON.parse(event.data);
+
+  switch (data.type) {
+    case "auth_success":
+      // Join room after authentication
+      joinRoom("chat:room_123");
+      break;
+
+    case "room_joined":
+      currentRoom = data.room;
+      console.log(`Joined ${data.room}`);
+      console.log(`Members:`, data.members);
+      break;
+
+    case "presence":
+      if (data.event === "join") {
+        console.log(`${data.user.username} joined`);
+      } else if (data.event === "leave") {
+        console.log(`User ${data.user.userId} left`);
+      }
+      break;
+  }
+};
+
+function joinRoom(room) {
+  ws.send(JSON.stringify({
+    type: "join_room",
+    room,
+    userData: {
+      userId: "user_abc",
+      username: "John",
+      avatar: "https://example.com/avatar.jpg",
+    },
+  }));
+}
+
+function leaveRoom() {
+  if (currentRoom) {
+    ws.send(JSON.stringify({
+      type: "leave_room",
+      room: currentRoom,
+    }));
+  }
+}
+
+function updateStatus(status) {
+  ws.send(JSON.stringify({
+    type: "update_presence",
+    status,
+  }));
+}
+
+// Set status to away after 5 minutes of inactivity
+let inactivityTimer;
+document.addEventListener("mousemove", () => {
+  clearTimeout(inactivityTimer);
+  updateStatus("online");
+
+  inactivityTimer = setTimeout(() => {
+    updateStatus("away");
+  }, 5 * 60 * 1000);
+});
+
+// Leave room on page unload
+window.addEventListener("beforeunload", leaveRoom);
+```
+
+---
+
+## Use Cases
+
+### Chat Room
+
+```javascript
+// Join chat room
+ws.send(JSON.stringify({
+  type: "join_room",
+  room: `chat:${roomId}`,
+  userData: { userId, username, avatar },
+}));
+
+// Show online users
+function updateOnlineUsers(members) {
+  const onlineList = document.getElementById("online-users");
+  onlineList.innerHTML = members
+    .map(m => `<div>${m.username}</div>`)
+    .join("");
+}
+```
+
+### Multiplayer Game
+
+```javascript
+// Join game lobby
+ws.send(JSON.stringify({
+  type: "join_room",
+  room: `game:${gameId}`,
+  userData: {
+    playerId,
+    playerName,
+    team: "blue",
+  },
+}));
+```
+
+## Error Responses
+
+### Room Full
+
+```json
+{
+  "type": "error",
+  "code": "ROOM_FULL",
+  "message": "Room has reached maximum capacity"
+}
+```
+
+### Already in Room
+
+```json
+{
+  "type": "error",
+  "code": "ALREADY_IN_ROOM",
+  "message": "You are already a member of this room"
+}
+```

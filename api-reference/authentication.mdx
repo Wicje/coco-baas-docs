@@ -1,0 +1,147 @@
+---
+title: API Authentication
+description: How to authenticate with the Cocobase API
+---
+
+# API Authentication
+
+Learn how to authenticate your requests to the Cocobase API.
+
+## API Key Authentication
+
+Include your API key in the `Authorization` header:
+
+```bash
+Authorization: Bearer YOUR_API_KEY
+```
+
+### Example Request
+
+```bash
+curl https://api.cocobase.buzz/collections/posts \
+  -H "Authorization: Bearer sk_live_abc123..."
+```
+
+## Getting Your API Key
+
+1. Log in to [Cocobase Dashboard](https://cocobase.buzz/dashboard)
+2. Navigate to **Settings** > **API Keys**
+3. Click **Create New Key**
+4. Copy the key (it won't be shown again)
+
+## API Key Types
+
+| Type | Prefix | Use Case |
+|------|--------|----------|
+| Live | `sk_live_` | Production applications |
+| Test | `sk_test_` | Development and testing |
+
+## Security Best Practices
+
+### Never Expose Keys in Client Code
+
+```javascript
+// BAD - Key exposed in frontend
+const db = new Cocobase({
+  apiKey: "sk_live_abc123", // Never do this!
+});
+
+// GOOD - Use environment variables
+const db = new Cocobase({
+  apiKey: process.env.COCOBASE_API_KEY,
+});
+```
+
+### Use Different Keys per Environment
+
+- Development: `sk_test_...`
+- Staging: `sk_test_...`
+- Production: `sk_live_...`
+
+### Rotate Keys Regularly
+
+1. Generate a new key in the dashboard
+2. Update your applications
+3. Revoke the old key
+
+## User Authentication Token
+
+For user-specific operations, you can also authenticate using a user JWT token:
+
+```bash
+Authorization: Bearer USER_JWT_TOKEN
+```
+
+User tokens are obtained after login:
+
+```bash
+curl -X POST https://api.cocobase.buzz/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email": "user@example.com", "password": "password123"}'
+```
+
+Response:
+
+```json
+{
+  "success": true,
+  "data": {
+    "token": "eyJhbGciOiJIUzI1NiIs...",
+    "user": {
+      "id": "user_123",
+      "email": "user@example.com"
+    }
+  }
+}
+```
+
+## Error Responses
+
+### Invalid API Key
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "INVALID_API_KEY",
+    "message": "The provided API key is invalid"
+  }
+}
+```
+
+### Missing Authorization
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "UNAUTHORIZED",
+    "message": "Authorization header is required"
+  }
+}
+```
+
+### Expired Token
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "TOKEN_EXPIRED",
+    "message": "The authentication token has expired"
+  }
+}
+```
+
+---
+
+## Next Steps
+
+<CardGroup cols="2">
+  <Card title="Collections API" icon="database" href="/api-reference/collections/create">
+    Start creating documents
+  </Card>
+  <Card title="Auth API" icon="lock" href="/api-reference/auth/register">
+    User authentication
+  </Card>
+</CardGroup>

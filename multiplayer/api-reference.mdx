@@ -1,0 +1,469 @@
+---
+title: 'API Reference'
+description: 'Complete reference for WebSocket cloud functions'
+icon: 'code'
+---
+
+## Event Handlers
+
+Your WebSocket function must define these event handlers:
+
+### on_connect()
+
+Called when a player connects to the WebSocket.
+
+```python
+async def on_connect():
+    # Access connection data
+    player_name = request.get('player_name', 'Guest')
+    room_id = request.get('room_id', 'default')
+
+    # Join a room
+    room.join(room_id, max_players=10)
+
+    # Initialize state
+    if not room.state:
+        room.state = {'players': {}}
+
+    # Add player
+    room.state['players'][session.player_id] = {
+        'name': player_name
+    }
+
+    # Broadcast to others
+    await room.broadcast({
+        'type': 'player_joined',
+        'player_id': session.player_id
+    })
+
+    # Return welcome message (sent only to this player)
+    return {
+        'type': 'welcome',
+        'your_id': session.player_id,
+        'players': room.state['players']
+    }
+```
+
+**Returns:** Dictionary that will be sent to the connecting player
+
+---
+
+### on_message()
+
+Called when a player sends a message to the server.
+
+```python
+async def on_message():
+    # Get message data
+    action = request.get('action')
+    data = request.get('data')
+
+    # Process based on action
+    if action == 'move':
+        x = request.get('x')
+        y = request.get('y')
+
+        # Update state
+        room.state['players'][session.player_id]['x'] = x
+        room.state['players'][session.player_id]['y'] = y
+
+        # Broadcast to all except sender
+        await room.broadcast({
+            'type': 'player_moved',
+            'player_id': session.player_id,
+            'x': x,
+            'y': y
+        }, exclude=[session.player_id])
+
+    # Return response (sent only to sender)
+    return {'status': 'ok'}
+```
+
+**Returns:** Dictionary that will be sent back to the message sender
+
+---
+
+### on_disconnect()
+
+Called when a player disconnects (closes WebSocket or loses connection).
+
+```python
+async def on_disconnect():
+    # Clean up player data
+    if session.player_id in room.state['players']:
+        player_name = room.state['players'][session.player_id]['name']
+        del room.state['players'][session.player_id]
+
+        # Notify others
+        await room.broadcast({
+            'type': 'player_left',
+            'player_id': session.player_id,
+            'player_name': player_name
+        })
+
+    # Destroy room if empty
+    if room.get_player_count() == 0:
+        room.destroy()
+```
+
+---
+
+### on_tick() <span style="color: #888;">(Optional)</span>
+
+Called repeatedly at a fixed rate (default 20 times per second) for continuous game updates.
+
+```python
+async def on_tick():
+    # Update game state
+    current_time = time.time()
+    delta_time = current_time - room.state.get('last_update', current_time)
+    room.state['last_update'] = current_time
+
+    # Example: Move objects
+    for obj in room.state.get('objects', []):
+        obj['x'] += obj['vx'] * delta_time
+        obj['y'] += obj['vy'] * delta_time
+
+    # Broadcast updates
+    await room.broadcast({
+        'type': 'state_update',
+        'objects': room.state['objects']
+    })
+```
+
+<Note>
+To use `on_tick`, you must start the game loop by calling `room.start_game_loop()` in your `on_connect` handler.
+</Note>
+
+---
+
+## Available Objects
+
+### session
+
+Access player session data and information.
+
+#### Properties
+
+<ResponseField name="player_id" type="string">
+  Unique identifier for this player
+</ResponseField>
+
+<ResponseField name="user" type="object | null">
+  Authenticated user object (if JWT token provided)
+</ResponseField>
+
+<ResponseField name="room_id" type="string">
+  Current room ID the player is in
+</ResponseField>
+
+<ResponseField name="connected_at" type="datetime">
+  Timestamp when player connected
+</ResponseField>
+
+<ResponseField name="metadata" type="dict">
+  Custom session metadata dictionary
+</ResponseField>
+
+#### Methods
+
+<ResponseField name="set(key, value)" type="function">
+  Store custom session data
+  ```python
+  session.set('score', 100)
+  session.set('inventory', ['sword', 'shield'])
+  ```
+</ResponseField>
+
+<ResponseField name="get(key, default=None)" type="function">
+  Retrieve custom session data
+  ```python
+  score = session.get('score', 0)
+  inventory = session.get('inventory', [])
+  ```
+</ResponseField>
+
+---
+
+### room
+
+Manage rooms and broadcast messages to players.
+
+#### Properties
+
+<ResponseField name="id" type="string">
+  Current room ID
+</ResponseField>
+
+<ResponseField name="state" type="dict">
+  Shared room state accessible to all players. Initialize this in `on_connect`.
+  ```python
+  # Initialize
+  if not room.state:
+      room.state = {'players': {}, 'game_phase': 'waiting'}
+
+  # Access/modify
+  room.state['game_phase'] = 'playing'
+  room.state['players'][session.player_id] = {'score': 0}
+  ```
+</ResponseField>
+
+<ResponseField name="config" type="dict">
+  Room configuration (tick_rate, custom flags, etc.)
+  ```python
+  room.config['tick_rate'] = 30  # 30 updates per second
+  room.config['game_started'] = True
+  ```
+</ResponseField>
+
+<ResponseField name="metadata" type="dict">
+  Custom room metadata for room listing
+  ```python
+  room.metadata['game_mode'] = 'battle_royale'
+  room.metadata['map'] = 'desert'
+  room.metadata['public'] = True
+  ```
+</ResponseField>
+
+#### Methods
+
+<ResponseField name="join(room_id, max_players=None)" type="function">
+  Join a room (auto-created if doesn't exist)
+  ```python
+  room.join('lobby', max_players=10)
+  room.join('private-room-123', max_players=2)
+  ```
+</ResponseField>
+
+<ResponseField name="broadcast(message, exclude=None, include=None)" type="async function">
+  Send message to all players in room
+  ```python
+  # Broadcast to everyone
+  await room.broadcast({'type': 'game_started'})
+
+  # Exclude specific players
+  await room.broadcast(
+      {'type': 'player_moved', 'x': 100, 'y': 200},
+      exclude=[session.player_id]
+  )
+
+  # Send only to specific players
+  await room.broadcast(
+      {'type': 'secret_message'},
+      include=['player-id-1', 'player-id-2']
+  )
+  ```
+</ResponseField>
+
+<ResponseField name="send_to(player_id, message)" type="async function">
+  Send message to a specific player
+  ```python
+  await room.send_to('player-id-123', {
+      'type': 'private_message',
+      'text': 'Hello!'
+  })
+  ```
+</ResponseField>
+
+<ResponseField name="get_players()" type="function">
+  Get list of connected player IDs
+  ```python
+  player_ids = room.get_players()
+  # ['player-1', 'player-2', 'player-3']
+  ```
+</ResponseField>
+
+<ResponseField name="get_player_count()" type="function">
+  Get number of connected players
+  ```python
+  count = room.get_player_count()  # 3
+  ```
+</ResponseField>
+
+<ResponseField name="start_game_loop()" type="function">
+  Start the game loop (enables `on_tick` calls)
+  ```python
+  # In on_connect
+  if not room.config.get('game_loop_started'):
+      room.config['game_loop_started'] = True
+      room.config['tick_rate'] = 20  # 20 ticks/second
+      room.start_game_loop()
+  ```
+</ResponseField>
+
+<ResponseField name="stop_game_loop()" type="function">
+  Stop the game loop
+  ```python
+  room.stop_game_loop()
+  ```
+</ResponseField>
+
+<ResponseField name="destroy()" type="function">
+  Destroy the room and disconnect all players
+  ```python
+  if room.get_player_count() == 0:
+      room.destroy()
+  ```
+</ResponseField>
+
+---
+
+### request
+
+Access incoming message data from the client.
+
+#### Methods
+
+<ResponseField name="get(key, default=None)" type="function">
+  Get value from incoming message
+  ```python
+  action = request.get('action')
+  x = request.get('x', 0)
+  player_name = request.get('player_name', 'Guest')
+  ```
+</ResponseField>
+
+<ResponseField name="json()" type="function">
+  Get entire message as dictionary
+  ```python
+  full_message = request.json()
+  # {'action': 'move', 'x': 100, 'y': 200}
+  ```
+</ResponseField>
+
+---
+
+### db
+
+Access your project's database (same as HTTP functions).
+
+```python
+# Create document
+user = await db.collection('users').insert({
+    'name': 'Alice',
+    'score': 100
+})
+
+# Query documents
+high_scores = await db.collection('users').where('score', '>', 50).get()
+
+# Update document
+await db.collection('users').update(user_id, {'score': 150})
+
+# Delete document
+await db.collection('users').delete(user_id)
+```
+
+<Info>
+See the [Database Documentation](/database/overview) for full database API reference.
+</Info>
+
+---
+
+## Built-in Modules
+
+The following Python modules are available in your functions:
+
+<ResponseField name="time" type="module">
+  Time-related functions
+  ```python
+  current_time = time.time()
+  time.sleep(1)
+  ```
+</ResponseField>
+
+<ResponseField name="random" type="module">
+  Random number generation
+  ```python
+  rand_num = random.random()
+  rand_int = random.randint(1, 10)
+  choice = random.choice(['a', 'b', 'c'])
+  ```
+</ResponseField>
+
+<ResponseField name="json" type="module">
+  JSON encoding/decoding
+  ```python
+  data = json.loads('{"key": "value"}')
+  string = json.dumps({'key': 'value'})
+  ```
+</ResponseField>
+
+<ResponseField name="uuid" type="module">
+  UUID generation
+  ```python
+  unique_id = str(uuid.uuid4())
+  ```
+</ResponseField>
+
+<ResponseField name="datetime" type="module">
+  Date and time handling
+  ```python
+  now = datetime.now()
+  timestamp = datetime.fromtimestamp(1234567890)
+  ```
+</ResponseField>
+
+---
+
+## Rate Limiting
+
+Each player is limited to **60 messages per second** to prevent abuse. Messages exceeding this limit will receive an error response:
+
+```json
+{
+  "error": "Rate limit exceeded",
+  "message": "Maximum 60 messages per second"
+}
+```
+
+---
+
+## Room Listing
+
+List all active rooms for your project:
+
+<CodeGroup>
+
+```bash cURL
+curl http://localhost:8000/ws/rooms/YOUR_PROJECT_ID
+```
+
+```javascript JavaScript SDK
+const rooms = await coco.multiplayer.listRooms({
+  publicOnly: true  // Optional: only show public rooms
+});
+
+console.log(rooms);
+// [
+//   {
+//     room_id: 'lobby',
+//     player_count: 5,
+//     max_players: 10,
+//     status: 'waiting',
+//     game_mode: 'battle_royale'
+//   }
+// ]
+```
+
+</CodeGroup>
+
+**Response:**
+
+```json
+{
+  "rooms": [
+    {
+      "room_id": "lobby",
+      "player_count": 5,
+      "max_players": 10,
+      "created_at": "2024-01-15T10:30:00Z",
+      "game_mode": "battle_royale",
+      "map": "desert",
+      "status": "waiting",
+      "custom_data": {}
+    }
+  ],
+  "total": 1
+}
+```

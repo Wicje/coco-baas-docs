@@ -1,0 +1,172 @@
+---
+title: List Files
+description: List files in storage
+---
+
+# List Files
+
+List files in your Cocobase storage.
+
+## Endpoint
+
+```
+GET /storage/files
+```
+
+## Query Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `path` | string | Filter by folder path |
+| `limit` | number | Max items (default: 20, max: 100) |
+| `offset` | number | Items to skip |
+| `orderBy` | string | Sort field (name, size, createdAt) |
+| `order` | string | Sort direction: `asc` or `desc` |
+
+## Response
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "file_abc123",
+      "name": "image1.jpg",
+      "size": 1024000,
+      "mimeType": "image/jpeg",
+      "path": "avatars",
+      "url": "https://storage.cocobase.buzz/files/abc123.jpg",
+      "createdAt": "2024-01-15T10:30:00Z"
+    },
+    {
+      "id": "file_def456",
+      "name": "document.pdf",
+      "size": 2048000,
+      "mimeType": "application/pdf",
+      "path": "documents",
+      "url": "https://storage.cocobase.buzz/files/def456.pdf",
+      "createdAt": "2024-01-14T10:30:00Z"
+    }
+  ],
+  "meta": {
+    "total": 50,
+    "limit": 20,
+    "offset": 0
+  }
+}
+```
+
+## Examples
+
+### List All Files
+
+```bash
+curl "https://api.cocobase.buzz/storage/files?limit=20" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+### List Files in Folder
+
+```bash
+curl "https://api.cocobase.buzz/storage/files?path=avatars" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+### List Files Sorted by Size
+
+```bash
+curl "https://api.cocobase.buzz/storage/files?orderBy=size&order=desc" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+### JavaScript
+
+```javascript
+// List all files
+const response = await fetch(
+  "https://api.cocobase.buzz/storage/files?limit=20",
+  {
+    headers: {
+      Authorization: "Bearer YOUR_API_KEY",
+    },
+  }
+);
+
+const { data: files, meta } = await response.json();
+console.log(`Found ${meta.total} files`);
+
+files.forEach((file) => {
+  console.log(`${file.name} - ${file.size} bytes`);
+});
+
+// List files in specific folder
+const avatarsResponse = await fetch(
+  "https://api.cocobase.buzz/storage/files?path=avatars",
+  {
+    headers: {
+      Authorization: "Bearer YOUR_API_KEY",
+    },
+  }
+);
+```
+
+### Python
+
+```python
+import requests
+
+# List all files
+response = requests.get(
+    "https://api.cocobase.buzz/storage/files",
+    headers={"Authorization": "Bearer YOUR_API_KEY"},
+    params={"limit": 20},
+)
+
+result = response.json()
+files = result["data"]
+meta = result["meta"]
+
+print(f"Found {meta['total']} files")
+for file in files:
+    print(f"{file['name']} - {file['size']} bytes")
+
+# List files in folder
+avatars_response = requests.get(
+    "https://api.cocobase.buzz/storage/files",
+    headers={"Authorization": "Bearer YOUR_API_KEY"},
+    params={"path": "avatars"},
+)
+```
+
+## Storage Statistics
+
+Get storage usage statistics.
+
+### Endpoint
+
+```
+GET /storage/stats
+```
+
+### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "totalFiles": 150,
+    "totalSize": 524288000,
+    "totalSizeHuman": "500 MB",
+    "limit": 1073741824,
+    "limitHuman": "1 GB",
+    "usagePercent": 48.8
+  }
+}
+```
+
+### Example
+
+```bash
+curl https://api.cocobase.buzz/storage/stats \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```

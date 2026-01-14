@@ -1,0 +1,172 @@
+---
+title: Read Document
+description: Get a single document or list documents from a collection
+---
+
+# Read Documents
+
+Retrieve documents from a collection.
+
+## Get Single Document
+
+### Endpoint
+
+```
+GET /collections/{collection}/{id}
+```
+
+### Parameters
+
+| Parameter | Type | Location | Required | Description |
+|-----------|------|----------|----------|-------------|
+| `collection` | string | path | Yes | Collection name |
+| `id` | string | path | Yes | Document ID |
+
+### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "doc_abc123",
+    "collection": "posts",
+    "data": {
+      "title": "My Post",
+      "content": "Hello World"
+    },
+    "createdAt": "2024-01-15T10:30:00Z",
+    "updatedAt": "2024-01-15T10:30:00Z"
+  }
+}
+```
+
+### Example
+
+```bash
+curl https://api.cocobase.buzz/collections/posts/doc_abc123 \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+---
+
+## List Documents
+
+### Endpoint
+
+```
+GET /collections/{collection}
+```
+
+### Query Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `limit` | number | No | Max items (default: 20, max: 100) |
+| `offset` | number | No | Items to skip |
+| `orderBy` | string | No | Field to sort by |
+| `order` | string | No | Sort direction: `asc` or `desc` |
+
+### Response
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "doc_abc123",
+      "collection": "posts",
+      "data": {
+        "title": "Post 1"
+      },
+      "createdAt": "2024-01-15T10:30:00Z",
+      "updatedAt": "2024-01-15T10:30:00Z"
+    },
+    {
+      "id": "doc_def456",
+      "collection": "posts",
+      "data": {
+        "title": "Post 2"
+      },
+      "createdAt": "2024-01-14T10:30:00Z",
+      "updatedAt": "2024-01-14T10:30:00Z"
+    }
+  ],
+  "meta": {
+    "total": 100,
+    "limit": 20,
+    "offset": 0
+  }
+}
+```
+
+### Example
+
+```bash
+curl "https://api.cocobase.buzz/collections/posts?limit=10&orderBy=createdAt&order=desc" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+---
+
+## Examples
+
+### JavaScript
+
+```javascript
+// Get single document
+const response = await fetch(
+  "https://api.cocobase.buzz/collections/posts/doc_abc123",
+  {
+    headers: {
+      Authorization: "Bearer YOUR_API_KEY",
+    },
+  }
+);
+const doc = await response.json();
+
+// List documents
+const listResponse = await fetch(
+  "https://api.cocobase.buzz/collections/posts?limit=10",
+  {
+    headers: {
+      Authorization: "Bearer YOUR_API_KEY",
+    },
+  }
+);
+const docs = await listResponse.json();
+```
+
+### Python
+
+```python
+import requests
+
+# Get single document
+response = requests.get(
+    "https://api.cocobase.buzz/collections/posts/doc_abc123",
+    headers={"Authorization": "Bearer YOUR_API_KEY"},
+)
+doc = response.json()
+
+# List documents
+list_response = requests.get(
+    "https://api.cocobase.buzz/collections/posts",
+    headers={"Authorization": "Bearer YOUR_API_KEY"},
+    params={"limit": 10, "orderBy": "createdAt", "order": "desc"},
+)
+docs = list_response.json()
+```
+
+## Error Responses
+
+### Document Not Found
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "Document not found"
+  }
+}
+```

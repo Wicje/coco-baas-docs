@@ -1,0 +1,244 @@
+---
+title: Broadcast Events
+description: Send custom real-time events to subscribers
+---
+
+# Broadcast Events
+
+Send custom real-time events to connected clients.
+
+## Endpoint
+
+```
+POST /realtime/broadcast
+```
+
+## Request Body
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `channel` | string | Yes | Channel name |
+| `event` | string | Yes | Event type |
+| `data` | object | Yes | Event payload |
+
+```json
+{
+  "channel": "chat:room_123",
+  "event": "message",
+  "data": {
+    "userId": "user_abc",
+    "text": "Hello everyone!"
+  }
+}
+```
+
+## Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "channel": "chat:room_123",
+    "event": "message",
+    "deliveredTo": 15
+  }
+}
+```
+
+## Examples
+
+### cURL
+
+```bash
+curl -X POST https://api.cocobase.buzz/realtime/broadcast \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "channel": "chat:room_123",
+    "event": "message",
+    "data": {
+      "userId": "user_abc",
+      "text": "Hello everyone!"
+    }
+  }'
+```
+
+### JavaScript
+
+```javascript
+// Broadcast a message
+await fetch("https://api.cocobase.buzz/realtime/broadcast", {
+  method: "POST",
+  headers: {
+    Authorization: "Bearer YOUR_API_KEY",
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    channel: "chat:room_123",
+    event: "message",
+    data: {
+      userId: "user_abc",
+      text: "Hello everyone!",
+    },
+  }),
+});
+
+// Broadcast typing indicator
+await fetch("https://api.cocobase.buzz/realtime/broadcast", {
+  method: "POST",
+  headers: {
+    Authorization: "Bearer YOUR_API_KEY",
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    channel: "chat:room_123",
+    event: "typing",
+    data: {
+      userId: "user_abc",
+      username: "John",
+    },
+  }),
+});
+```
+
+### Python
+
+```python
+import requests
+
+# Broadcast notification
+response = requests.post(
+    "https://api.cocobase.buzz/realtime/broadcast",
+    headers={
+        "Authorization": "Bearer YOUR_API_KEY",
+        "Content-Type": "application/json",
+    },
+    json={
+        "channel": "notifications:user_123",
+        "event": "new_message",
+        "data": {
+            "title": "New Message",
+            "body": "You have a new message",
+        },
+    },
+)
+
+result = response.json()
+print(f"Delivered to {result['data']['deliveredTo']} clients")
+```
+
+---
+
+## Subscribing to Broadcasts
+
+Clients subscribe to channels via WebSocket.
+
+### Subscribe
+
+```json
+{
+  "type": "subscribe_channel",
+  "channel": "chat:room_123"
+}
+```
+
+### Receive Events
+
+```json
+{
+  "type": "broadcast",
+  "channel": "chat:room_123",
+  "event": "message",
+  "data": {
+    "userId": "user_abc",
+    "text": "Hello everyone!"
+  }
+}
+```
+
+### JavaScript Client
+
+```javascript
+const ws = new WebSocket("wss://api.cocobase.buzz/realtime");
+
+ws.onopen = () => {
+  // Authenticate
+  ws.send(JSON.stringify({
+    type: "auth",
+    token: "YOUR_API_KEY",
+  }));
+
+  // Subscribe to channel
+  ws.send(JSON.stringify({
+    type: "subscribe_channel",
+    channel: "chat:room_123",
+  }));
+};
+
+ws.onmessage = (event) => {
+  const data = JSON.parse(event.data);
+
+  if (data.type === "broadcast") {
+    console.log(`Channel: ${data.channel}`);
+    console.log(`Event: ${data.event}`);
+    console.log(`Data:`, data.data);
+  }
+};
+```
+
+---
+
+## Use Cases
+
+### Chat Typing Indicators
+
+```javascript
+// When user starts typing
+await fetch("https://api.cocobase.buzz/realtime/broadcast", {
+  method: "POST",
+  headers: {
+    Authorization: "Bearer YOUR_API_KEY",
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    channel: `chat:${roomId}`,
+    event: "typing_start",
+    data: { userId, username },
+  }),
+});
+```
+
+### Game State Updates
+
+```javascript
+// Broadcast game move
+await fetch("https://api.cocobase.buzz/realtime/broadcast", {
+  method: "POST",
+  headers: {
+    Authorization: "Bearer YOUR_API_KEY",
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    channel: `game:${gameId}`,
+    event: "move",
+    data: {
+      playerId,
+      position: { x: 10, y: 20 },
+    },
+  }),
+});
+```
+
+## Error Responses
+
+### Invalid Channel
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "INVALID_CHANNEL",
+    "message": "Channel name is invalid"
+  }
+}
+```

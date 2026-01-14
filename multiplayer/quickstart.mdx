@@ -1,0 +1,437 @@
+---
+title: "Quick Start"
+description: "Build your first multiplayer function in 5 minutes"
+icon: "rocket"
+---
+
+## Create Your First Multiplayer Function
+
+Let's build a simple multiplayer cursor tracking game where players can see each other's mouse positions in real-time.
+
+### Step 1: Create the Cloud Function
+
+<CodeGroup>
+
+```bash cURL
+curl -X POST http://localhost:8000/projects/YOUR_PROJECT_ID/functions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "cursor_game",
+    "function_type": "websocket",
+    "description": "Multiplayer cursor tracking game",
+    "code": "YOUR_CODE_HERE"
+  }'
+```
+
+```javascript JavaScript SDK
+import { CocoCloud } from "@cococloud/sdk";
+
+const coco = new CocoCloud({
+  projectId: "YOUR_PROJECT_ID",
+  apiKey: "YOUR_API_KEY",
+});
+
+await coco.functions.create({
+  name: "cursor_game",
+  functionType: "websocket",
+  description: "Multiplayer cursor tracking game",
+  code: `
+    // Your WebSocket function code here
+  `,
+});
+```
+
+```python Python SDK
+from cococloud import CocoCloud
+
+coco = CocoCloud(
+    project_id="YOUR_PROJECT_ID",
+    api_key="YOUR_API_KEY"
+)
+
+coco.functions.create(
+    name="cursor_game",
+    function_type="websocket",
+    description="Multiplayer cursor tracking game",
+    code="""
+    # Your WebSocket function code here
+    """
+)
+```
+
+</CodeGroup>
+
+### Step 2: Define Event Handlers
+
+Here's the complete function code with all event handlers:
+
+```python Python (Cloud Function)
+async def on_connect():
+    """Called when a player connects"""
+    player_name = request.get('player_name', 'Guest')
+
+    # Join a room (auto-created if doesn't exist)
+    room.join(request.get('room_id', 'lobby'), max_players=10)
+
+    # Initialize room state on first player
+    if not room.state:
+        room.state = {'players': {}}
+
+    # Add player to state
+    room.state['players'][session.player_id] = {
+        'name': player_name,
+        'x': 400,
+        'y': 300,
+        'color': '#ff6b6b'
+    }
+
+    # Broadcast join event to all players
+    await room.broadcast({
+        'type': 'player_joined',
+        'player_id': session.player_id,
+        'player_name': player_name
+    })
+
+    # Return welcome message to connecting player
+    return {
+        'type': 'welcome',
+        'your_id': session.player_id,
+        'players': room.state['players']
+    }
+
+
+async def on_message():
+    """Called when a player sends a message"""
+    action = request.get('action')
+
+    if action == 'move':
+        # Update player position
+        x = request.get('x', 0)
+        y = request.get('y', 0)
+
+        if session.player_id in room.state['players']:
+            room.state['players'][session.player_id]['x'] = x
+            room.state['players'][session.player_id]['y'] = y
+
+            # Broadcast movement to all other players
+            await room.broadcast({
+                'type': 'player_moved',
+                'player_id': session.player_id,
+                'x': x,
+                'y': y
+            }, exclude=[session.player_id])
+
+
+async def on_disconnect():
+    """Called when a player disconnects"""
+    if session.player_id in room.state['players']:
+        player_name = room.state['players'][session.player_id]['name']
+        del room.state['players'][session.player_id]
+
+        await room.broadcast({
+            'type': 'player_left',
+            'player_id': session.player_id,
+            'player_name': player_name
+        })
+```
+
+### Step 3: Connect from Client
+
+<CodeGroup>
+
+```html HTML + JavaScript
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Cursor Game</title>
+    <style>
+      body {
+        margin: 0;
+        overflow: hidden;
+        background: #1a1a2e;
+      }
+      canvas {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="canvas"></canvas>
+
+    <script>
+      const canvas = document.getElementById("canvas");
+      const ctx = canvas.getContext("2d");
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+
+      // Connect to WebSocket
+      const ws = new WebSocket(
+        "wss://cloud.cocobase.buzz/ws/YOUR_PROJECT_ID/cursor_game"
+      );
+
+      let myId = null;
+      let players = {};
+
+      // Send initial connection message
+      ws.onopen = () => {
+        ws.send(
+          JSON.stringify({
+            room_id: "lobby",
+            player_name: "Player" + Math.floor(Math.random() * 1000),
+          })
+        );
+      };
+
+      // Handle incoming messages
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+
+        switch (data.type) {
+          case "welcome":
+            myId = data.your_id;
+            players = data.players;
+            break;
+
+          case "player_joined":
+            console.log(data.player_name + " joined!");
+            break;
+
+          case "player_moved":
+            if (players[data.player_id]) {
+              players[data.player_id].x = data.x;
+              players[data.player_id].y = data.y;
+            }
+            break;
+
+          case "player_left":
+            delete players[data.player_id];
+            console.log(data.player_name + " left");
+            break;
+        }
+      };
+
+      // Send cursor position on mouse move
+      canvas.addEventListener("mousemove", (e) => {
+        if (ws.readyState === WebSocket.OPEN && myId) {
+          ws.send(
+            JSON.stringify({
+              action: "move",
+              x: e.clientX,
+              y: e.clientY,
+            })
+          );
+
+          // Update local state immediately
+          if (players[myId]) {
+            players[myId].x = e.clientX;
+            players[myId].y = e.clientY;
+          }
+        }
+      });
+
+      // Render loop
+      function render() {
+        ctx.fillStyle = "#1a1a2e";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // Draw all players
+        for (const [id, player] of Object.entries(players)) {
+          ctx.fillStyle = player.color || "#fff";
+          ctx.beginPath();
+          ctx.arc(player.x, player.y, 10, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Draw name
+          ctx.fillStyle = "#fff";
+          ctx.font = "14px Arial";
+          ctx.fillText(player.name, player.x + 15, player.y + 5);
+        }
+
+        requestAnimationFrame(render);
+      }
+
+      render();
+    </script>
+  </body>
+</html>
+```
+
+```javascript React + WebSocket
+import { useEffect, useRef, useState } from "react";
+
+function CursorGame() {
+  const canvasRef = useRef(null);
+  const wsRef = useRef(null);
+  const [myId, setMyId] = useState(null);
+  const [players, setPlayers] = useState({});
+
+  useEffect(() => {
+    // Connect to WebSocket
+    const ws = new WebSocket(
+      "wss://cloud.cocobase.buzz/ws/YOUR_PROJECT_ID/cursor_game"
+    );
+    wsRef.current = ws;
+
+    ws.onopen = () => {
+      ws.send(
+        JSON.stringify({
+          room_id: "lobby",
+          player_name: "Player" + Math.floor(Math.random() * 1000),
+        })
+      );
+    };
+
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+
+      switch (data.type) {
+        case "welcome":
+          setMyId(data.your_id);
+          setPlayers(data.players);
+          break;
+
+        case "player_moved":
+          setPlayers((prev) => ({
+            ...prev,
+            [data.player_id]: {
+              ...prev[data.player_id],
+              x: data.x,
+              y: data.y,
+            },
+          }));
+          break;
+
+        case "player_left":
+          setPlayers((prev) => {
+            const newPlayers = { ...prev };
+            delete newPlayers[data.player_id];
+            return newPlayers;
+          });
+          break;
+      }
+    };
+
+    return () => ws.close();
+  }, []);
+
+  const handleMouseMove = (e) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN && myId) {
+      wsRef.current.send(
+        JSON.stringify({
+          action: "move",
+          x: e.clientX,
+          y: e.clientY,
+        })
+      );
+
+      setPlayers((prev) => ({
+        ...prev,
+        [myId]: { ...prev[myId], x: e.clientX, y: e.clientY },
+      }));
+    }
+  };
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext("2d");
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    function render() {
+      ctx.fillStyle = "#1a1a2e";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      Object.entries(players).forEach(([id, player]) => {
+        ctx.fillStyle = player.color || "#fff";
+        ctx.beginPath();
+        ctx.arc(player.x, player.y, 10, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = "#fff";
+        ctx.font = "14px Arial";
+        ctx.fillText(player.name, player.x + 15, player.y + 5);
+      });
+
+      requestAnimationFrame(render);
+    }
+
+    render();
+  }, [players]);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      onMouseMove={handleMouseMove}
+      style={{ display: "block", background: "#1a1a2e" }}
+    />
+  );
+}
+
+export default CursorGame;
+```
+
+```javascript CocoCloud SDK
+import { CocoCloud } from "@cococloud/sdk";
+
+const coco = new CocoCloud({
+  projectId: "YOUR_PROJECT_ID",
+  apiKey: "YOUR_API_KEY",
+});
+
+// Connect to multiplayer function
+const connection = coco.multiplayer.connect("cursor_game", {
+  roomId: "lobby",
+  playerName: "Player" + Math.floor(Math.random() * 1000),
+});
+
+// Handle connection
+connection.on("connected", (data) => {
+  console.log("Connected! Your ID:", data.yourId);
+  console.log("Current players:", data.players);
+});
+
+// Handle player movements
+connection.on("player_moved", (data) => {
+  console.log(`Player ${data.player_id} moved to (${data.x}, ${data.y})`);
+  // Update your game state
+});
+
+// Send cursor position
+window.addEventListener("mousemove", (e) => {
+  connection.send({
+    action: "move",
+    x: e.clientX,
+    y: e.clientY,
+  });
+});
+
+// Handle disconnection
+connection.on("disconnected", () => {
+  console.log("Disconnected from game");
+});
+```
+
+</CodeGroup>
+
+## Test It Out!
+
+1. Open the HTML file in multiple browser tabs
+2. Move your mouse - you should see cursors from other tabs
+3. Each player has a different color and name
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Add Game Loop" icon="rotate" href="/multiplayer/game-loop">
+    Learn how to use on_tick for continuous game updates
+  </Card>
+  <Card title="API Reference" icon="code" href="/multiplayer/api-reference">
+    Explore all available methods and objects
+  </Card>
+  <Card title="Examples" icon="book" href="/multiplayer/examples">
+    See more complete game examples
+  </Card>
+  <Card title="Best Practices" icon="star" href="/multiplayer/best-practices">
+    Tips for production-ready multiplayer apps
+  </Card>
+</CardGroup>

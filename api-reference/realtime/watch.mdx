@@ -1,0 +1,220 @@
+---
+title: Watch Collection
+description: Subscribe to real-time collection changes
+---
+
+# Watch Collection
+
+Subscribe to real-time changes in a collection using WebSockets or Server-Sent Events.
+
+## WebSocket Connection
+
+### Endpoint
+
+```
+wss://api.cocobase.buzz/realtime
+```
+
+### Authentication
+
+Send authentication message after connecting:
+
+```json
+{
+  "type": "auth",
+  "token": "YOUR_API_KEY"
+}
+```
+
+### Subscribe to Collection
+
+```json
+{
+  "type": "subscribe",
+  "collection": "posts",
+  "filters": {
+    "status": "published"
+  }
+}
+```
+
+### Event Messages
+
+```json
+{
+  "type": "event",
+  "collection": "posts",
+  "event": "created",
+  "document": {
+    "id": "doc_abc123",
+    "data": {
+      "title": "New Post"
+    },
+    "createdAt": "2024-01-15T10:30:00Z"
+  }
+}
+```
+
+## Event Types
+
+| Event | Description |
+|-------|-------------|
+| `created` | New document created |
+| `updated` | Document modified |
+| `deleted` | Document deleted |
+
+---
+
+## JavaScript Example
+
+```javascript
+const ws = new WebSocket("wss://api.cocobase.buzz/realtime");
+
+ws.onopen = () => {
+  // Authenticate
+  ws.send(JSON.stringify({
+    type: "auth",
+    token: "YOUR_API_KEY",
+  }));
+
+  // Subscribe to collection
+  ws.send(JSON.stringify({
+    type: "subscribe",
+    collection: "posts",
+    filters: {
+      status: "published",
+    },
+  }));
+};
+
+ws.onmessage = (event) => {
+  const data = JSON.parse(event.data);
+
+  if (data.type === "event") {
+    console.log(`${data.event}: ${data.document.id}`);
+
+    switch (data.event) {
+      case "created":
+        console.log("New document:", data.document);
+        break;
+      case "updated":
+        console.log("Updated document:", data.document);
+        break;
+      case "deleted":
+        console.log("Deleted document:", data.document.id);
+        break;
+    }
+  }
+};
+
+ws.onerror = (error) => {
+  console.error("WebSocket error:", error);
+};
+
+ws.onclose = () => {
+  console.log("Connection closed");
+};
+```
+
+---
+
+## Server-Sent Events (SSE)
+
+Alternative to WebSockets for simpler implementations.
+
+### Endpoint
+
+```
+GET /realtime/sse/{collection}
+```
+
+### Query Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `filters` | string | JSON-encoded filters |
+
+### Example
+
+```bash
+curl -N "https://api.cocobase.buzz/realtime/sse/posts" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Accept: text/event-stream"
+```
+
+### JavaScript with EventSource
+
+```javascript
+const params = new URLSearchParams({
+  filters: JSON.stringify({ status: "published" }),
+});
+
+const eventSource = new EventSource(
+  `https://api.cocobase.buzz/realtime/sse/posts?${params}`,
+  {
+    headers: {
+      Authorization: "Bearer YOUR_API_KEY",
+    },
+  }
+);
+
+eventSource.onmessage = (event) => {
+  const data = JSON.parse(event.data);
+  console.log(`${data.event}: ${data.document.id}`);
+};
+
+eventSource.onerror = (error) => {
+  console.error("SSE error:", error);
+};
+
+// Close connection
+eventSource.close();
+```
+
+---
+
+## Unsubscribe
+
+### WebSocket
+
+```json
+{
+  "type": "unsubscribe",
+  "collection": "posts"
+}
+```
+
+### Example
+
+```javascript
+// Unsubscribe from collection
+ws.send(JSON.stringify({
+  type: "unsubscribe",
+  collection: "posts",
+}));
+
+// Close connection
+ws.close();
+```
+
+## Error Messages
+
+### Authentication Error
+
+```json
+{
+  "type": "error",
+  "code": "UNAUTHORIZED",
+  "message": "Invalid or missing authentication token"
+}
+```
+
+### Invalid Collection
+
+```json
+{
+  "type": "error",
+  "code": "INVALID_COLLECTION",
+  "message": "Collection does not exist"
+}
+```

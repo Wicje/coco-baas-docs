@@ -178,24 +178,6 @@ def main():
     return {"result": result}
 ````
 
-**Validate Token Expiration:**
-
-```dart
-Future<void> withAuthCheck(Future<void> Function() operation) async {
-  try {
-    await operation();
-  } on DioException catch (e) {
-    if (e.response?.statusCode == 401) {
-      // Token expired - logout and redirect to login
-      await db.logout();
-      // Navigate to login screen
-      throw Exception('Session expired - please login again');
-    }
-    rethrow;
-  }
-}
-```
-
 ### Input Validation
 
 **Always Validate User Input:**
@@ -273,44 +255,6 @@ function createPost(title, content) {
 }
 ```
 
-### Secure Data Storage
-
-**Encrypt Sensitive Data:**
-
-```python
-import hashlib
-
-def main():
-    password = req.get('password')
-
-    # Hash password before storing
-    hashed = hashlib.sha256(password.encode()).hexdigest()
-
-    # Or use more secure methods like bcrypt
-    # hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt())
-
-    user = db.create_app_user(
-        email=req.get('email'),
-        password=hashed,
-        data={'hashed': True}
-    )
-
-    return {"user_id": user.id}
-```
-
-**Use HTTPS in Production:**
-
-```dart
-// Good - HTTPS for production
-final config = CocobaseConfig(
-  apiKey: apiKey,
-  baseUrl: 'https://api.cocobase.buzz',  // HTTPS
-);
-
-// Bad - HTTP in production
-// baseUrl: 'http://api.cocobase.buzz',  // Insecure
-```
-
 ---
 
 ## Data Modeling Best Practices
@@ -324,7 +268,6 @@ final config = CocobaseConfig(
 {
   "author_id": "user-123",        // Obviously a user reference
   "product_ids": ["p1", "p2"],    // Obviously multiple products
-  "created_at": "2024-01-15",     // Clear timestamp
   "is_published": true,           // Boolean clarity
 }
 
@@ -332,7 +275,6 @@ final config = CocobaseConfig(
 {
   "related": "...",      // Related to what?
   "ids": ["..."],        // IDs of what?
-  "date": "...",         // Created, updated, deleted?
   "flag": true,          // Flag for what?
 }
 ```
@@ -419,52 +361,6 @@ user_data = {
 # count = followers["total"]  # Expensive!
 ```
 
----
-
-## Query Optimization
-
-### Use Indexes Strategically
-
-**Index Frequently Queried Fields:**
-
-```python
-# Good - index fields used in queries
-collection_schema = {
-    "name": "posts",
-    "indexes": [
-        {"field": "status"},      # Frequently filtered
-        {"field": "author_id"},   # Frequently filtered
-        {"field": "created_at"},  # Used for sorting
-    ]
-}
-```
-
-**Avoid Over-Indexing:**
-
-```javascript
-// Bad - too many indexes
-const schema = {
-  name: "posts",
-  indexes: [
-    { field: "status" },
-    { field: "title" },
-    { field: "content" }, // Large text - don't index
-    { field: "views" }, // Changes frequently - expensive
-    { field: "is_draft" }, // Low cardinality - not useful
-  ],
-};
-
-// Good - selective indexing
-const schema = {
-  name: "posts",
-  indexes: [
-    { field: "status" },
-    { field: "author_id" },
-    { field: "created_at" },
-  ],
-};
-```
-
 ### Efficient Queries
 
 **Use Specific Queries:**
@@ -490,13 +386,13 @@ final filtered = all.where((doc) =>
 
 ```python
 # Good - limited results
-posts = db.query("posts",
+posts = db.list_documents("posts",
     status="published",
     limit=20  # Prevent loading too much
 )
 
 # Bad - no limit (could return millions)
-posts = db.query("posts",
+posts = db.list_documents("posts",
     status="published"
 )
 ```
@@ -930,38 +826,6 @@ void main() {
     });
   });
 }
-```
-
-### Integration Testing
-
-```javascript
-// JavaScript example
-describe("User authentication", () => {
-  let db;
-
-  beforeEach(() => {
-    db = new Cocobase({ apiKey: process.env.TEST_API_KEY });
-  });
-
-  it("should register a new user", async () => {
-    const user = await db.register({
-      email: "test@example.com",
-      password: "SecurePassword123!",
-    });
-
-    expect(user.email).toBe("test@example.com");
-    expect(user.id).toBeDefined();
-  });
-
-  it("should login with correct credentials", async () => {
-    const result = await db.login({
-      email: "test@example.com",
-      password: "SecurePassword123!",
-    });
-
-    expect(result.token).toBeDefined();
-  });
-});
 ```
 
 ---

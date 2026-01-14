@@ -1,0 +1,875 @@
+---
+title: "Examples"
+description: "Complete multiplayer game examples you can deploy"
+icon: "book"
+---
+
+## Example Games
+
+<CardGroup cols={2}>
+  <Card title="Cursor Tracking" icon="mouse-pointer">
+    Simple multiplayer cursor tracking with real-time position updates
+  </Card>
+  <Card title="Aviator Crash Game" icon="plane">
+    Betting game where players cash out before the plane crashes
+  </Card>
+  <Card title="Coin Collection" icon="coins">
+    Competitive game where players collect coins for points
+  </Card>
+  <Card title="Chat Room" icon="comments">
+    Real-time chat with rooms and message history
+  </Card>
+</CardGroup>
+
+---
+
+## 🎯 Cursor Tracking Game
+
+A simple example showing real-time player positions.
+
+<Tabs>
+  <Tab title="Cloud Function">
+    ```python
+    async def on_connect():
+        player_name = request.get('player_name', 'Guest')
+        room.join(request.get('room_id', 'lobby'), max_players=10)
+
+        if not room.state:
+            room.state = {'players': {}}
+
+        room.state['players'][session.player_id] = {
+            'name': player_name,
+            'x': 400,
+            'y': 300,
+            'color': '#' + ''.join([hex(random.randint(0, 255))[2:].zfill(2) for _ in range(3)])
+        }
+
+        await room.broadcast({
+            'type': 'player_joined',
+            'player_id': session.player_id,
+            'player_name': player_name
+        })
+
+        return {
+            'type': 'welcome',
+            'your_id': session.player_id,
+            'players': room.state['players']
+        }
+
+
+    async def on_message():
+        action = request.get('action')
+
+        if action == 'move':
+            x = request.get('x', 0)
+            y = request.get('y', 0)
+
+            if session.player_id in room.state['players']:
+                room.state['players'][session.player_id]['x'] = x
+                room.state['players'][session.player_id]['y'] = y
+
+                await room.broadcast({
+                    'type': 'player_moved',
+                    'player_id': session.player_id,
+                    'x': x,
+                    'y': y
+                }, exclude=[session.player_id])
+
+
+    async def on_disconnect():
+        if session.player_id in room.state['players']:
+            player_name = room.state['players'][session.player_id]['name']
+            del room.state['players'][session.player_id]
+
+            await room.broadcast({
+                'type': 'player_left',
+                'player_id': session.player_id,
+                'player_name': player_name
+            })
+
+        if room.get_player_count() == 0:
+            room.destroy()
+    ```
+
+  </Tab>
+
+  <Tab title="HTML Client">
+    ```html
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Cursor Game</title>
+        <style>
+            body { margin: 0; background: #1a1a2e; }
+            canvas { display: block; }
+        </style>
+    </head>
+    <body>
+        <canvas id="canvas"></canvas>
+        <script>
+            const canvas = document.getElementById('canvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+
+            const ws = new WebSocket('wss://cloud.cocobase.buzz/ws/PROJECT_ID/cursor_game');
+            let myId = null;
+            let players = {};
+
+            ws.onopen = () => {
+                ws.send(JSON.stringify({
+                    room_id: 'lobby',
+                    player_name: 'Player' + Math.floor(Math.random() * 1000)
+                }));
+            };
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+
+                switch (data.type) {
+                    case 'welcome':
+                        myId = data.your_id;
+                        players = data.players;
+                        break;
+                    case 'player_moved':
+                        if (players[data.player_id]) {
+                            players[data.player_id].x = data.x;
+                            players[data.player_id].y = data.y;
+                        }
+                        break;
+                    case 'player_left':
+                        delete players[data.player_id];
+                        break;
+                }
+            };
+
+            canvas.addEventListener('mousemove', (e) => {
+                if (ws.readyState === WebSocket.OPEN && myId) {
+                    ws.send(JSON.stringify({
+                        action: 'move',
+                        x: e.clientX,
+                        y: e.clientY
+                    }));
+
+                    if (players[myId]) {
+                        players[myId].x = e.clientX;
+                        players[myId].y = e.clientY;
+                    }
+                }
+            });
+
+            function render() {
+                ctx.fillStyle = '#1a1a2e';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                for (const [id, player] of Object.entries(players)) {
+                    ctx.fillStyle = player.color;
+                    ctx.beginPath();
+                    ctx.arc(player.x, player.y, 10, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    ctx.fillStyle = '#fff';
+                    ctx.font = '14px Arial';
+                    ctx.fillText(player.name, player.x + 15, player.y + 5);
+                }
+
+                requestAnimationFrame(render);
+            }
+
+            render();
+        </script>
+    </body>
+    </html>
+    ```
+
+  </Tab>
+
+  <Tab title="JavaScript SDK">
+    ```javascript
+    import { CocoCloud } from '@cococloud/sdk';
+
+    const coco = new CocoCloud({
+      projectId: 'YOUR_PROJECT_ID',
+      apiKey: 'YOUR_API_KEY'
+    });
+
+    // Connect to game
+    const connection = coco.multiplayer.connect('cursor_game', {
+      roomId: 'lobby',
+      playerName: 'Player' + Math.floor(Math.random() * 1000)
+    });
+
+    let myId = null;
+    let players = {};
+
+    // Handle connection
+    connection.on('connected', (data) => {
+      myId = data.yourId;
+      players = data.players;
+      console.log('Connected!', players);
+    });
+
+    // Handle player movements
+    connection.on('player_moved', (data) => {
+      if (players[data.player_id]) {
+        players[data.player_id].x = data.x;
+        players[data.player_id].y = data.y;
+      }
+    });
+
+    // Handle player leaving
+    connection.on('player_left', (data) => {
+      delete players[data.player_id];
+    });
+
+    // Send cursor position
+    window.addEventListener('mousemove', (e) => {
+      connection.send({
+        action: 'move',
+        x: e.clientX,
+        y: e.clientY
+      });
+
+      // Update local state
+      if (players[myId]) {
+        players[myId].x = e.clientX;
+        players[myId].y = e.clientY;
+      }
+    });
+
+    // Disconnect
+    window.addEventListener('beforeunload', () => {
+      connection.disconnect();
+    });
+    ```
+
+  </Tab>
+</Tabs>
+
+---
+
+## ✈️ Aviator Crash Game
+
+A betting game with automatic rounds and multipliers.
+
+<Tabs>
+  <Tab title="Cloud Function">
+    ```python
+    async def on_connect():
+        if not room.state:
+            room.state = {
+                'players': {},
+                'phase': 'waiting_for_players',
+                'multiplier': 1.0,
+                'crash_point': 0,
+                'round': 1,
+                'timer': 5.0,
+                'last_update': time.time(),
+                'min_players': 2
+            }
+
+        room.state['players'][session.player_id] = {
+            'name': request.get('player_name', 'Guest'),
+            'balance': 1000,
+            'bet': 0,
+            'has_bet': False,
+            'cashed_out': False
+        }
+
+        if room.state['phase'] == 'waiting_for_players':
+            if len(room.state['players']) >= room.state['min_players']:
+                room.state['phase'] = 'waiting'
+                await room.broadcast({'type': 'game_starting'})
+
+        if not room.config.get('game_loop_started'):
+            room.config['game_loop_started'] = True
+            room.config['tick_rate'] = 20
+            room.start_game_loop()
+
+        return {
+            'type': 'welcome',
+            'your_id': session.player_id,
+            'players': room.state['players'],
+            'phase': room.state['phase']
+        }
+
+
+    async def on_message():
+        action = request.get('action')
+        player = room.state['players'][session.player_id]
+
+        if action == 'place_bet':
+            amount = request.get('amount', 0)
+
+            if room.state['phase'] != 'betting':
+                return {'error': 'Cannot bet now'}
+
+            if amount > player['balance']:
+                return {'error': 'Insufficient balance'}
+
+            player['balance'] -= amount
+            player['bet'] = amount
+            player['has_bet'] = True
+
+            await room.broadcast({
+                'type': 'bet_placed',
+                'player_id': session.player_id,
+                'amount': amount
+            })
+
+            return {'type': 'bet_confirmed', 'balance': player['balance']}
+
+        elif action == 'cashout':
+            if room.state['phase'] != 'flying':
+                return {'error': 'No active round'}
+
+            if not player['has_bet'] or player['cashed_out']:
+                return {'error': 'No active bet'}
+
+            multiplier = room.state['multiplier']
+            winnings = int(player['bet'] * multiplier)
+            player['balance'] += winnings
+            player['cashed_out'] = True
+
+            await room.broadcast({
+                'type': 'player_cashed_out',
+                'player_id': session.player_id,
+                'multiplier': round(multiplier, 2),
+                'winnings': winnings
+            })
+
+            return {'type': 'cashout_success', 'multiplier': round(multiplier, 2)}
+
+
+    async def on_tick():
+        current_time = time.time()
+        delta_time = current_time - room.state['last_update']
+        room.state['last_update'] = current_time
+
+        phase = room.state['phase']
+
+        if phase == 'waiting_for_players':
+            return
+
+        if phase == 'waiting':
+            room.state['timer'] -= delta_time
+            if room.state['timer'] <= 0:
+                room.state['phase'] = 'betting'
+                room.state['timer'] = 10.0
+                await room.broadcast({'type': 'betting_started'})
+
+        elif phase == 'betting':
+            room.state['timer'] -= delta_time
+            if room.state['timer'] <= 0:
+                room.state['phase'] = 'flying'
+                room.state['multiplier'] = 1.0
+                rand = random.random()
+                room.state['crash_point'] = 1.5 + rand * 8.5
+                await room.broadcast({'type': 'round_started'})
+
+        elif phase == 'flying':
+            growth = 0.1 * (1 + room.state['multiplier'] * 0.05)
+            room.state['multiplier'] += growth * delta_time
+
+            await room.broadcast({
+                'type': 'multiplier_update',
+                'multiplier': round(room.state['multiplier'], 2)
+            })
+
+            if room.state['multiplier'] >= room.state['crash_point']:
+                room.state['phase'] = 'crashed'
+
+                for player in room.state['players'].values():
+                    player['has_bet'] = False
+                    player['cashed_out'] = False
+                    player['bet'] = 0
+
+                await room.broadcast({
+                    'type': 'plane_crashed',
+                    'crash_multiplier': round(room.state['crash_point'], 2)
+                })
+
+                room.state['round'] += 1
+                room.state['phase'] = 'waiting'
+                room.state['timer'] = 5.0
+
+
+    async def on_disconnect():
+        if session.player_id in room.state['players']:
+            del room.state['players'][session.player_id]
+
+            await room.broadcast({
+                'type': 'player_left',
+                'player_id': session.player_id
+            })
+
+        if room.get_player_count() == 0:
+            room.destroy()
+    ```
+
+  </Tab>
+
+  <Tab title="JavaScript SDK">
+    ```javascript
+    import { CocoCloud } from '@cococloud/sdk';
+
+    const coco = new CocoCloud({
+      projectId: 'YOUR_PROJECT_ID',
+      apiKey: 'YOUR_API_KEY'
+    });
+
+    const connection = coco.multiplayer.connect('aviator', {
+      roomId: 'aviator-room-1',
+      playerName: 'Player' + Math.floor(Math.random() * 1000)
+    });
+
+    let myBalance = 1000;
+    let currentMultiplier = 1.0;
+    let gamePhase = 'waiting';
+
+    connection.on('connected', (data) => {
+      console.log('Connected to Aviator!');
+      myBalance = data.players[data.yourId].balance;
+      gamePhase = data.phase;
+      updateUI();
+    });
+
+    connection.on('betting_started', () => {
+      gamePhase = 'betting';
+      document.getElementById('betBtn').disabled = false;
+      console.log('Betting phase started!');
+    });
+
+    connection.on('round_started', () => {
+      gamePhase = 'flying';
+      document.getElementById('betBtn').disabled = true;
+      document.getElementById('cashoutBtn').disabled = false;
+      console.log('Round started!');
+    });
+
+    connection.on('multiplier_update', (data) => {
+      currentMultiplier = data.multiplier;
+      document.getElementById('multiplier').textContent =
+        data.multiplier.toFixed(2) + 'x';
+    });
+
+    connection.on('plane_crashed', (data) => {
+      gamePhase = 'crashed';
+      document.getElementById('cashoutBtn').disabled = true;
+      console.log('Crashed at', data.crash_multiplier + 'x');
+    });
+
+    connection.on('bet_confirmed', (data) => {
+      myBalance = data.balance;
+      console.log('Bet placed! New balance:', myBalance);
+    });
+
+    connection.on('cashout_success', (data) => {
+      myBalance = data.balance;
+      console.log('Cashed out at', data.multiplier + 'x');
+    });
+
+    // Place bet
+    function placeBet() {
+      const amount = parseInt(document.getElementById('betAmount').value);
+      connection.send({
+        action: 'place_bet',
+        amount: amount
+      });
+    }
+
+    // Cash out
+    function cashout() {
+      connection.send({
+        action: 'cashout'
+      });
+    }
+
+    function updateUI() {
+      document.getElementById('balance').textContent = '$' + myBalance;
+      document.getElementById('phase').textContent = gamePhase;
+    }
+    ```
+
+  </Tab>
+</Tabs>
+
+---
+
+## 🪙 Coin Collection Game
+
+Competitive game where players collect coins for points.
+
+<Tabs>
+  <Tab title="Cloud Function">
+    ```python
+    async def on_connect():
+        room.join(request.get('room_id', 'lobby'), max_players=10)
+
+        if not room.state:
+            room.state = {
+                'players': {},
+                'coins': [],
+                'last_update': time.time()
+            }
+
+            # Spawn initial coins
+            for _ in range(10):
+                room.state['coins'].append({
+                    'id': str(uuid.uuid4()),
+                    'x': random.randint(50, 750),
+                    'y': random.randint(50, 550)
+                })
+
+        room.state['players'][session.player_id] = {
+            'name': request.get('player_name', 'Guest'),
+            'x': 400,
+            'y': 300,
+            'score': 0,
+            'color': '#' + ''.join([hex(random.randint(0, 255))[2:].zfill(2) for _ in range(3)])
+        }
+
+        if not room.config.get('game_loop_started'):
+            room.config['game_loop_started'] = True
+            room.config['tick_rate'] = 20
+            room.start_game_loop()
+
+        await room.broadcast({
+            'type': 'player_joined',
+            'player_id': session.player_id
+        })
+
+        return {
+            'type': 'welcome',
+            'your_id': session.player_id,
+            'players': room.state['players'],
+            'coins': room.state['coins']
+        }
+
+
+    async def on_message():
+        action = request.get('action')
+
+        if action == 'move':
+            x = request.get('x', 0)
+            y = request.get('y', 0)
+
+            player = room.state['players'][session.player_id]
+            player['x'] = x
+            player['y'] = y
+
+            # Check coin collisions
+            for coin in room.state['coins'][:]:
+                dx = coin['x'] - x
+                dy = coin['y'] - y
+                distance = (dx * dx + dy * dy) ** 0.5
+
+                if distance < 20:  # Collision
+                    room.state['coins'].remove(coin)
+                    player['score'] += 10
+
+                    # Spawn new coin
+                    room.state['coins'].append({
+                        'id': str(uuid.uuid4()),
+                        'x': random.randint(50, 750),
+                        'y': random.randint(50, 550)
+                    })
+
+                    await room.broadcast({
+                        'type': 'coin_collected',
+                        'player_id': session.player_id,
+                        'coin_id': coin['id'],
+                        'new_coin': room.state['coins'][-1],
+                        'score': player['score']
+                    })
+
+            await room.broadcast({
+                'type': 'player_moved',
+                'player_id': session.player_id,
+                'x': x,
+                'y': y
+            }, exclude=[session.player_id])
+
+
+    async def on_tick():
+        # Optional: Add power-ups or time-limited events
+        pass
+
+
+    async def on_disconnect():
+        if session.player_id in room.state['players']:
+            del room.state['players'][session.player_id]
+
+            await room.broadcast({
+                'type': 'player_left',
+                'player_id': session.player_id
+            })
+
+        if room.get_player_count() == 0:
+            room.destroy()
+    ```
+
+  </Tab>
+
+  <Tab title="JavaScript SDK">
+    ```javascript
+    import { CocoCloud } from '@cococloud/sdk';
+
+    const coco = new CocoCloud({
+      projectId: 'YOUR_PROJECT_ID',
+      apiKey: 'YOUR_API_KEY'
+    });
+
+    const connection = coco.multiplayer.connect('coin_game', {
+      roomId: 'lobby',
+      playerName: 'Player' + Math.floor(Math.random() * 1000)
+    });
+
+    let myId = null;
+    let players = {};
+    let coins = [];
+    let myScore = 0;
+
+    connection.on('connected', (data) => {
+      myId = data.yourId;
+      players = data.players;
+      coins = data.coins;
+      myScore = players[myId].score;
+      console.log('Connected!', players);
+    });
+
+    connection.on('player_moved', (data) => {
+      if (players[data.player_id]) {
+        players[data.player_id].x = data.x;
+        players[data.player_id].y = data.y;
+      }
+    });
+
+    connection.on('coin_collected', (data) => {
+      // Remove old coin
+      coins = coins.filter(c => c.id !== data.coin_id);
+      // Add new coin
+      coins.push(data.new_coin);
+
+      if (data.player_id === myId) {
+        myScore = data.score;
+        document.getElementById('score').textContent = myScore;
+      }
+    });
+
+    // Send movement
+    window.addEventListener('keydown', (e) => {
+      const player = players[myId];
+      if (!player) return;
+
+      let x = player.x;
+      let y = player.y;
+      const speed = 5;
+
+      switch (e.key) {
+        case 'ArrowUp': y -= speed; break;
+        case 'ArrowDown': y += speed; break;
+        case 'ArrowLeft': x -= speed; break;
+        case 'ArrowRight': x += speed; break;
+      }
+
+      connection.send({
+        action: 'move',
+        x: x,
+        y: y
+      });
+
+      // Update local state
+      player.x = x;
+      player.y = y;
+    });
+    ```
+
+  </Tab>
+</Tabs>
+
+---
+
+## 💬 Chat Room
+
+Real-time chat with room support.
+
+<Tabs>
+  <Tab title="Cloud Function">
+    ```python
+    async def on_connect():
+        room.join(request.get('room_id', 'general'), max_players=50)
+
+        if not room.state:
+            room.state = {
+                'users': {},
+                'messages': []
+            }
+
+        username = request.get('username', 'Guest')
+        room.state['users'][session.player_id] = {
+            'username': username,
+            'joined_at': time.time()
+        }
+
+        await room.broadcast({
+            'type': 'user_joined',
+            'user_id': session.player_id,
+            'username': username
+        })
+
+        return {
+            'type': 'welcome',
+            'your_id': session.player_id,
+            'users': room.state['users'],
+            'messages': room.state['messages'][-50:]  # Last 50 messages
+        }
+
+
+    async def on_message():
+        action = request.get('action')
+
+        if action == 'send_message':
+            text = request.get('text', '')
+
+            if len(text) > 0 and len(text) <= 500:
+                message = {
+                    'id': str(uuid.uuid4()),
+                    'user_id': session.player_id,
+                    'username': room.state['users'][session.player_id]['username'],
+                    'text': text,
+                    'timestamp': time.time()
+                }
+
+                room.state['messages'].append(message)
+
+                # Keep only last 100 messages
+                if len(room.state['messages']) > 100:
+                    room.state['messages'] = room.state['messages'][-100:]
+
+                await room.broadcast({
+                    'type': 'new_message',
+                    'message': message
+                })
+
+                return {'status': 'sent'}
+
+            return {'error': 'Invalid message'}
+
+
+    async def on_disconnect():
+        if session.player_id in room.state['users']:
+            username = room.state['users'][session.player_id]['username']
+            del room.state['users'][session.player_id]
+
+            await room.broadcast({
+                'type': 'user_left',
+                'user_id': session.player_id,
+                'username': username
+            })
+
+        if room.get_player_count() == 0:
+            room.destroy()
+    ```
+
+  </Tab>
+
+  <Tab title="JavaScript SDK">
+    ```javascript
+    import { CocoCloud } from '@cococloud/sdk';
+
+    const coco = new CocoCloud({
+      projectId: 'YOUR_PROJECT_ID',
+      apiKey: 'YOUR_API_KEY'
+    });
+
+    const connection = coco.multiplayer.connect('chat_room', {
+      roomId: 'general',
+      username: prompt('Enter your username:')
+    });
+
+    let messages = [];
+    let users = {};
+
+    connection.on('connected', (data) => {
+      console.log('Connected to chat!');
+      messages = data.messages;
+      users = data.users;
+      renderMessages();
+      renderUsers();
+    });
+
+    connection.on('new_message', (data) => {
+      messages.push(data.message);
+      renderMessages();
+    });
+
+    connection.on('user_joined', (data) => {
+      users[data.user_id] = { username: data.username };
+      addSystemMessage(`${data.username} joined`);
+      renderUsers();
+    });
+
+    connection.on('user_left', (data) => {
+      delete users[data.user_id];
+      addSystemMessage(`${data.username} left`);
+      renderUsers();
+    });
+
+    function sendMessage() {
+      const input = document.getElementById('messageInput');
+      const text = input.value.trim();
+
+      if (text) {
+        connection.send({
+          action: 'send_message',
+          text: text
+        });
+        input.value = '';
+      }
+    }
+
+    function renderMessages() {
+      const container = document.getElementById('messages');
+      container.innerHTML = messages.map(m => `
+        <div class="message">
+          <span class="username">${m.username}:</span>
+          <span class="text">${m.text}</span>
+        </div>
+      `).join('');
+      container.scrollTop = container.scrollHeight;
+    }
+
+    function renderUsers() {
+      const container = document.getElementById('userList');
+      container.innerHTML = Object.values(users).map(u => `
+        <div class="user">${u.username}</div>
+      `).join('');
+    }
+
+    function addSystemMessage(text) {
+      messages.push({
+        id: Date.now(),
+        username: 'System',
+        text: text,
+        timestamp: Date.now()
+      });
+      renderMessages();
+    }
+    ```
+
+  </Tab>
+</Tabs>
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="API Reference" icon="code" href="/multiplayer/api-reference">
+    Complete API documentation
+  </Card>
+  <Card title="Best Practices" icon="star" href="/multiplayer/best-practices">
+    Tips for production-ready apps
+  </Card>
+</CardGroup>

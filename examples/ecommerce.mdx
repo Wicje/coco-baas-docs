@@ -1,0 +1,372 @@
+---
+title: E-commerce App
+description: Build a complete e-commerce application with Cocobase
+---
+
+# E-commerce App Example
+
+Build a complete e-commerce application with products, cart, orders, and payments.
+
+## Features
+
+- Product catalog with categories
+- Shopping cart
+- User authentication
+- Order management
+- Search and filtering
+
+---
+
+## Data Models
+
+```typescript
+interface Product {
+  name: string;
+  description: string;
+  price: number;
+  category: string;
+  images: string[];
+  stock: number;
+  featured: boolean;
+}
+
+interface CartItem {
+  productId: string;
+  quantity: number;
+  userId: string;
+}
+
+interface Order {
+  userId: string;
+  items: OrderItem[];
+  totalAmount: number;
+  status: "pending" | "paid" | "shipped" | "delivered";
+  shippingAddress: Address;
+  createdAt: string;
+}
+
+interface OrderItem {
+  productId: string;
+  name: string;
+  price: number;
+  quantity: number;
+}
+```
+
+---
+
+## Implementation
+
+<Tabs>
+  <Tab title="JavaScript">
+    ```typescript
+    import { Cocobase, QueryBuilder } from "cocobase";
+
+    const db = new Cocobase({
+      apiKey: process.env.COCOBASE_API_KEY,
+    });
+
+    // Products
+    async function getProducts(options?: {
+      category?: string;
+      search?: string;
+      minPrice?: number;
+      maxPrice?: number;
+      featured?: boolean;
+    }) {
+      const query = new QueryBuilder()
+        .whereGreaterThan("stock", 0)
+        .orderByDesc("createdAt")
+        .limit(20);
+
+      if (options?.category) {
+        query.where("category", options.category);
+      }
+      if (options?.search) {
+        query.searchInFields(["name", "description"], options.search);
+      }
+      if (options?.minPrice) {
+        query.whereGreaterThanOrEqual("price", options.minPrice);
+      }
+      if (options?.maxPrice) {
+        query.whereLessThanOrEqual("price", options.maxPrice);
+      }
+      if (options?.featured) {
+        query.where("featured", true);
+      }
+
+      return await db.listDocuments("products", { query });
+    }
+
+    async function getProduct(productId: string) {
+      return await db.getDocument("products", productId);
+    }
+
+    // Cart
+    async function getCart() {
+      const user = await db.auth.getUser();
+      return await db.listDocuments("cart", {
+        filters: { userId: user.id },
+      });
+    }
+
+    async function addToCart(productId: string, quantity: number = 1) {
+      const user = await db.auth.getUser();
+
+      // Check if item already in cart
+      const existing = await db.listDocuments("cart", {
+        filters: {
+          userId: user.id,
+          productId,
+        },
+      });
+
+      if (existing.length > 0) {
+        // Update quantity
+        return await db.updateDocument("cart", existing[0].id, {
+          quantity: existing[0].data.quantity + quantity,
+        });
+      }
+
+      // Add new item
+      return await db.createDocument("cart", {
+        productId,
+        quantity,
+        userId: user.id,
+      });
+    }
+
+    async function updateCartItem(cartItemId: string, quantity: number) {
+      if (quantity <= 0) {
+        return await db.deleteDocument("cart", cartItemId);
+      }
+      return await db.updateDocument("cart", cartItemId, { quantity });
+    }
+
+    async function clearCart() {
+      const cartItems = await getCart();
+      for (const item of cartItems) {
+        await db.deleteDocument("cart", item.id);
+      }
+    }
+
+    // Orders
+    async function createOrder(shippingAddress: Address) {
+      const user = await db.auth.getUser();
+      const cartItems = await getCart();
+
+      if (cartItems.length === 0) {
+        throw new Error("Cart is empty");
+      }
+
+      // Build order items with product details
+      const orderItems = await Promise.all(
+        cartItems.map(async (item) => {
+          const product = await getProduct(item.data.productId);
+          return {
+            productId: item.data.productId,
+            name: product.data.name,
+            price: product.data.price,
+            quantity: item.data.quantity,
+          };
+        })
+      );
+
+      const totalAmount = orderItems.reduce(
+        (sum, item) => sum + item.price * item.quantity,
+        0
+      );
+
+      // Create order
+      const order = await db.createDocument("orders", {
+        userId: user.id,
+        items: orderItems,
+        totalAmount,
+        status: "pending",
+        shippingAddress,
+        createdAt: new Date().toISOString(),
+      });
+
+      // Clear cart
+      await clearCart();
+
+      // Update stock
+      for (const item of orderItems) {
+        const product = await getProduct(item.productId);
+        await db.updateDocument("products", item.productId, {
+          stock: product.data.stock - item.quantity,
+        });
+      }
+
+      return order;
+    }
+
+    async function getOrders() {
+      const user = await db.auth.getUser();
+      return await db.listDocuments("orders", {
+        filters: {
+          userId: user.id,
+          orderBy: "createdAt",
+          order: "desc",
+        },
+      });
+    }
+    ```
+  </Tab>
+
+  <Tab title="Flutter">
+    ```dart
+    import 'package:cocobase_flutter/cocobase_flutter.dart';
+
+    class EcommerceService {
+      final Cocobase db;
+
+      EcommerceService(this.db);
+
+      // Products
+      Future<List<Document>> getProducts({
+        String? category,
+        String? search,
+        double? minPrice,
+        double? maxPrice,
+        bool? featured,
+      }) async {
+        final query = QueryBuilder()
+          .whereGreaterThan('stock', 0)
+          .orderByDesc('createdAt')
+          .limit(20);
+
+        if (category != null) {
+          query.where('category', category);
+        }
+        if (search != null) {
+          query.searchInFields(['name', 'description'], search);
+        }
+        if (minPrice != null) {
+          query.whereGreaterThanOrEqual('price', minPrice);
+        }
+        if (maxPrice != null) {
+          query.whereLessThanOrEqual('price', maxPrice);
+        }
+        if (featured == true) {
+          query.where('featured', true);
+        }
+
+        return await db.listDocuments('products', queryBuilder: query);
+      }
+
+      // Cart
+      Future<List<Document>> getCart() async {
+        final user = await db.auth.getUser();
+        return await db.listDocuments('cart', filters: {
+          'userId': user!.id,
+        });
+      }
+
+      Future<void> addToCart(String productId, {int quantity = 1}) async {
+        final user = await db.auth.getUser();
+
+        final existing = await db.listDocuments('cart', filters: {
+          'userId': user!.id,
+          'productId': productId,
+        });
+
+        if (existing.isNotEmpty) {
+          await db.updateDocument('cart', existing[0].id, {
+            'quantity': existing[0].data['quantity'] + quantity,
+          });
+        } else {
+          await db.createDocument('cart', {
+            'productId': productId,
+            'quantity': quantity,
+            'userId': user.id,
+          });
+        }
+      }
+
+      Future<void> updateCartItem(String cartItemId, int quantity) async {
+        if (quantity <= 0) {
+          await db.deleteDocument('cart', cartItemId);
+        } else {
+          await db.updateDocument('cart', cartItemId, {'quantity': quantity});
+        }
+      }
+
+      // Orders
+      Future<Document> createOrder(Map<String, dynamic> shippingAddress) async {
+        final user = await db.auth.getUser();
+        final cartItems = await getCart();
+
+        if (cartItems.isEmpty) {
+          throw Exception('Cart is empty');
+        }
+
+        // Build order items
+        final orderItems = <Map<String, dynamic>>[];
+        double totalAmount = 0;
+
+        for (final item in cartItems) {
+          final product = await db.getDocument('products', item.data['productId']);
+          final orderItem = {
+            'productId': item.data['productId'],
+            'name': product.data['name'],
+            'price': product.data['price'],
+            'quantity': item.data['quantity'],
+          };
+          orderItems.add(orderItem);
+          totalAmount += (product.data['price'] as num) * (item.data['quantity'] as num);
+        }
+
+        // Create order
+        final order = await db.createDocument('orders', {
+          'userId': user!.id,
+          'items': orderItems,
+          'totalAmount': totalAmount,
+          'status': 'pending',
+          'shippingAddress': shippingAddress,
+          'createdAt': DateTime.now().toIso8601String(),
+        });
+
+        // Clear cart
+        for (final item in cartItems) {
+          await db.deleteDocument('cart', item.id);
+        }
+
+        return order;
+      }
+
+      Future<List<Document>> getOrders() async {
+        final user = await db.auth.getUser();
+        return await db.listDocuments('orders', filters: {
+          'userId': user!.id,
+          'orderBy': 'createdAt',
+          'order': 'desc',
+        });
+      }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+---
+
+## Key Concepts Demonstrated
+
+1. **Complex Queries** - Filter by category, price range, search
+2. **Relationships** - Cart items reference products
+3. **Transactions** - Order creation with stock updates
+4. **Denormalization** - Store product name/price in order items
+5. **User Isolation** - Users only see their own cart/orders
+
+---
+
+## Next Steps
+
+<CardGroup cols="2">
+  <Card title="Social Media App" icon="share-nodes" href="/examples/social-media">
+    Build a social network
+  </Card>
+  <Card title="Chat App" icon="comments" href="/examples/chat-app">
+    Build real-time chat
+  </Card>
+</CardGroup>

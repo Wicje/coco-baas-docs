@@ -1,0 +1,484 @@
+---
+title: Chat App
+description: Build a real-time chat application with Cocobase
+---
+
+# Chat App Example
+
+Build a complete real-time chat application with rooms, direct messages, and typing indicators.
+
+## Features
+
+- Public and private chat rooms
+- Direct messages
+- Real-time message delivery
+- Typing indicators
+- Online presence
+- Message history
+
+---
+
+## Data Models
+
+```typescript
+interface Room {
+  name: string;
+  description?: string;
+  type: "public" | "private" | "direct";
+  members: string[];
+  createdBy: string;
+  createdAt: string;
+}
+
+interface Message {
+  roomId: string;
+  senderId: string;
+  senderName: string;
+  content: string;
+  type: "text" | "image" | "file";
+  attachmentUrl?: string;
+  createdAt: string;
+  readBy: string[];
+}
+
+interface Presence {
+  userId: string;
+  status: "online" | "away" | "offline";
+  lastSeen: string;
+}
+```
+
+---
+
+## Implementation
+
+<Tabs>
+  <Tab title="JavaScript">
+    ```typescript
+    import { Cocobase } from "cocobase";
+
+    const db = new Cocobase({
+      apiKey: process.env.COCOBASE_API_KEY,
+    });
+
+    // Rooms
+    async function createRoom(name: string, type: "public" | "private") {
+      const user = await db.auth.getUser();
+
+      return await db.createDocument("rooms", {
+        name,
+        type,
+        members: [user.id],
+        createdBy: user.id,
+        createdAt: new Date().toISOString(),
+      });
+    }
+
+    async function createDirectMessage(otherUserId: string) {
+      const user = await db.auth.getUser();
+      const members = [user.id, otherUserId].sort();
+
+      // Check if DM already exists
+      const existing = await db.listDocuments("rooms", {
+        filters: {
+          type: "direct",
+          members__contains: members.join(","),
+        },
+      });
+
+      if (existing.length > 0) {
+        return existing[0];
+      }
+
+      return await db.createDocument("rooms", {
+        name: "Direct Message",
+        type: "direct",
+        members,
+        createdBy: user.id,
+        createdAt: new Date().toISOString(),
+      });
+    }
+
+    async function getRooms() {
+      const user = await db.auth.getUser();
+
+      return await db.listDocuments("rooms", {
+        filters: {
+          members__contains: user.id,
+          orderBy: "createdAt",
+          order: "desc",
+        },
+      });
+    }
+
+    async function joinRoom(roomId: string) {
+      const user = await db.auth.getUser();
+      const room = await db.getDocument("rooms", roomId);
+
+      if (room.data.members.includes(user.id)) {
+        return room;
+      }
+
+      return await db.updateDocument("rooms", roomId, {
+        members: [...room.data.members, user.id],
+      });
+    }
+
+    // Messages
+    async function sendMessage(
+      roomId: string,
+      content: string,
+      type: "text" | "image" | "file" = "text",
+      attachmentUrl?: string
+    ) {
+      const user = await db.auth.getUser();
+      const profile = await db.getDocument("users", user.id);
+
+      return await db.createDocument("messages", {
+        roomId,
+        senderId: user.id,
+        senderName: profile.data.displayName || user.email,
+        content,
+        type,
+        attachmentUrl,
+        createdAt: new Date().toISOString(),
+        readBy: [user.id],
+      });
+    }
+
+    async function getMessages(roomId: string, limit: number = 50) {
+      return await db.listDocuments("messages", {
+        filters: {
+          roomId,
+          orderBy: "createdAt",
+          order: "desc",
+          limit,
+        },
+      });
+    }
+
+    async function markAsRead(messageId: string) {
+      const user = await db.auth.getUser();
+      const message = await db.getDocument("messages", messageId);
+
+      if (message.data.readBy.includes(user.id)) {
+        return message;
+      }
+
+      return await db.updateDocument("messages", messageId, {
+        readBy: [...message.data.readBy, user.id],
+      });
+    }
+
+    // Real-time
+    function watchMessages(roomId: string, callback: (message: any) => void) {
+      return db.watchCollection("messages", (event) => {
+        if (event.document.data.roomId === roomId) {
+          callback(event);
+        }
+      }, {
+        filters: { roomId },
+      });
+    }
+
+    // Presence
+    async function updatePresence(status: "online" | "away" | "offline") {
+      const user = await db.auth.getUser();
+
+      const existing = await db.listDocuments("presence", {
+        filters: { userId: user.id },
+      });
+
+      const data = {
+        userId: user.id,
+        status,
+        lastSeen: new Date().toISOString(),
+      };
+
+      if (existing.length > 0) {
+        return await db.updateDocument("presence", existing[0].id, data);
+      }
+
+      return await db.createDocument("presence", data);
+    }
+
+    function watchPresence(userIds: string[], callback: (presence: any) => void) {
+      return db.watchCollection("presence", callback, {
+        filters: {
+          userId__in: userIds.join(","),
+        },
+      });
+    }
+
+    // Typing indicators
+    let typingTimeout: NodeJS.Timeout;
+
+    async function sendTypingIndicator(roomId: string) {
+      const user = await db.auth.getUser();
+
+      // Broadcast typing event
+      await db.broadcast(`room:${roomId}:typing`, {
+        userId: user.id,
+        timestamp: Date.now(),
+      });
+
+      // Clear after 3 seconds
+      clearTimeout(typingTimeout);
+      typingTimeout = setTimeout(() => {
+        db.broadcast(`room:${roomId}:typing:stop`, {
+          userId: user.id,
+        });
+      }, 3000);
+    }
+
+    function watchTyping(roomId: string, callback: (data: any) => void) {
+      return db.subscribe(`room:${roomId}:typing`, callback);
+    }
+    ```
+  </Tab>
+
+  <Tab title="Flutter">
+    ```dart
+    import 'package:cocobase_flutter/cocobase_flutter.dart';
+
+    class ChatService {
+      final Cocobase db;
+
+      ChatService(this.db);
+
+      // Rooms
+      Future<Document> createRoom(String name, String type) async {
+        final user = await db.auth.getUser();
+
+        return await db.createDocument('rooms', {
+          'name': name,
+          'type': type,
+          'members': [user!.id],
+          'createdBy': user.id,
+          'createdAt': DateTime.now().toIso8601String(),
+        });
+      }
+
+      Future<Document> createDirectMessage(String otherUserId) async {
+        final user = await db.auth.getUser();
+        final members = [user!.id, otherUserId]..sort();
+
+        final existing = await db.listDocuments('rooms', filters: {
+          'type': 'direct',
+          'members__contains': members.join(','),
+        });
+
+        if (existing.isNotEmpty) {
+          return existing.first;
+        }
+
+        return await db.createDocument('rooms', {
+          'name': 'Direct Message',
+          'type': 'direct',
+          'members': members,
+          'createdBy': user.id,
+          'createdAt': DateTime.now().toIso8601String(),
+        });
+      }
+
+      Future<List<Document>> getRooms() async {
+        final user = await db.auth.getUser();
+
+        return await db.listDocuments('rooms', filters: {
+          'members__contains': user!.id,
+          'orderBy': 'createdAt',
+          'order': 'desc',
+        });
+      }
+
+      // Messages
+      Future<Document> sendMessage(
+        String roomId,
+        String content, {
+        String type = 'text',
+        String? attachmentUrl,
+      }) async {
+        final user = await db.auth.getUser();
+        final profile = await db.getDocument('users', user!.id);
+
+        return await db.createDocument('messages', {
+          'roomId': roomId,
+          'senderId': user.id,
+          'senderName': profile.data['displayName'] ?? user.email,
+          'content': content,
+          'type': type,
+          'attachmentUrl': attachmentUrl,
+          'createdAt': DateTime.now().toIso8601String(),
+          'readBy': [user.id],
+        });
+      }
+
+      Future<List<Document>> getMessages(String roomId, {int limit = 50}) async {
+        return await db.listDocuments('messages', filters: {
+          'roomId': roomId,
+          'orderBy': 'createdAt',
+          'order': 'desc',
+          'limit': limit,
+        });
+      }
+
+      // Real-time
+      Stream<Document> watchMessages(String roomId) {
+        return db.watchCollectionStream('messages', filters: {
+          'roomId': roomId,
+        });
+      }
+
+      // Presence
+      Future<void> updatePresence(String status) async {
+        final user = await db.auth.getUser();
+
+        final existing = await db.listDocuments('presence', filters: {
+          'userId': user!.id,
+        });
+
+        final data = {
+          'userId': user.id,
+          'status': status,
+          'lastSeen': DateTime.now().toIso8601String(),
+        };
+
+        if (existing.isNotEmpty) {
+          await db.updateDocument('presence', existing.first.id, data);
+        } else {
+          await db.createDocument('presence', data);
+        }
+      }
+    }
+    ```
+  </Tab>
+
+  <Tab title="React Component">
+    ```tsx
+    import { useState, useEffect, useRef } from "react";
+    import { Cocobase } from "cocobase";
+
+    const db = new Cocobase({ apiKey: process.env.COCOBASE_API_KEY });
+
+    interface Message {
+      id: string;
+      content: string;
+      senderName: string;
+      senderId: string;
+      createdAt: string;
+    }
+
+    export function ChatRoom({ roomId }: { roomId: string }) {
+      const [messages, setMessages] = useState<Message[]>([]);
+      const [newMessage, setNewMessage] = useState("");
+      const [typingUsers, setTypingUsers] = useState<string[]>([]);
+      const messagesEndRef = useRef<HTMLDivElement>(null);
+
+      useEffect(() => {
+        loadMessages();
+
+        // Watch for new messages
+        const unsubscribe = db.watchCollection("messages", (event) => {
+          if (event.type === "created" && event.document.data.roomId === roomId) {
+            setMessages((prev) => [
+              ...prev,
+              { id: event.document.id, ...event.document.data },
+            ]);
+          }
+        });
+
+        return () => unsubscribe();
+      }, [roomId]);
+
+      useEffect(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      }, [messages]);
+
+      async function loadMessages() {
+        const docs = await db.listDocuments("messages", {
+          filters: {
+            roomId,
+            orderBy: "createdAt",
+            order: "asc",
+            limit: 100,
+          },
+        });
+        setMessages(docs.map((d) => ({ id: d.id, ...d.data })));
+      }
+
+      async function sendMessage(e: React.FormEvent) {
+        e.preventDefault();
+        if (!newMessage.trim()) return;
+
+        const user = await db.auth.getUser();
+        const profile = await db.getDocument("users", user.id);
+
+        await db.createDocument("messages", {
+          roomId,
+          senderId: user.id,
+          senderName: profile.data.displayName,
+          content: newMessage,
+          type: "text",
+          createdAt: new Date().toISOString(),
+          readBy: [user.id],
+        });
+
+        setNewMessage("");
+      }
+
+      return (
+        <div className="chat-room">
+          <div className="messages">
+            {messages.map((msg) => (
+              <div key={msg.id} className="message">
+                <strong>{msg.senderName}</strong>
+                <p>{msg.content}</p>
+                <small>{new Date(msg.createdAt).toLocaleTimeString()}</small>
+              </div>
+            ))}
+            <div ref={messagesEndRef} />
+          </div>
+
+          {typingUsers.length > 0 && (
+            <div className="typing-indicator">
+              {typingUsers.join(", ")} typing...
+            </div>
+          )}
+
+          <form onSubmit={sendMessage}>
+            <input
+              value={newMessage}
+              onChange={(e) => setNewMessage(e.target.value)}
+              placeholder="Type a message..."
+            />
+            <button type="submit">Send</button>
+          </form>
+        </div>
+      );
+    }
+    ```
+  </Tab>
+</Tabs>
+
+---
+
+## Key Concepts Demonstrated
+
+1. **Real-time Messaging** - Instant message delivery with watchers
+2. **Room Types** - Public, private, and direct message rooms
+3. **Presence** - Online/offline status tracking
+4. **Typing Indicators** - Real-time typing notifications
+5. **Read Receipts** - Track who has read messages
+
+---
+
+## Next Steps
+
+<CardGroup cols="2">
+  <Card title="Real-time Features" icon="bolt" href="/features/realtime">
+    Learn more about real-time
+  </Card>
+  <Card title="Todo App" icon="check" href="/examples/todo-app">
+    Build a todo app
+  </Card>
+</CardGroup>

@@ -1,0 +1,132 @@
+---
+title: API Reference
+description: Complete REST API reference for Cocobase
+---
+
+# API Reference
+
+The Cocobase REST API allows you to interact with your database using standard HTTP requests.
+
+## Base URL
+
+```
+https://api.cocobase.buzz
+```
+
+## Authentication
+
+All API requests require authentication using your API key in the `Authorization` header:
+
+```bash
+Authorization: Bearer YOUR_API_KEY
+```
+
+## Request Format
+
+- All request bodies should be JSON
+- Set `Content-Type: application/json` header
+
+## Response Format
+
+All responses are JSON with the following structure:
+
+**Success Response:**
+
+```json
+{
+  "success": true,
+  "data": { ... }
+}
+```
+
+**Error Response:**
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "ERROR_CODE",
+    "message": "Human readable message"
+  }
+}
+```
+
+## HTTP Status Codes
+
+| Code | Description |
+|------|-------------|
+| 200 | Success |
+| 201 | Created |
+| 400 | Bad Request - Invalid parameters |
+| 401 | Unauthorized - Invalid or missing API key |
+| 403 | Forbidden - Insufficient permissions |
+| 404 | Not Found - Resource doesn't exist |
+| 429 | Too Many Requests - Rate limited |
+| 500 | Internal Server Error |
+
+## Rate Limits
+
+- **Standard**: 100 requests per minute
+- **Pro**: 1000 requests per minute
+- **Enterprise**: Custom limits
+
+Rate limit headers are included in responses:
+
+```
+X-RateLimit-Limit: 100
+X-RateLimit-Remaining: 95
+X-RateLimit-Reset: 1640000000
+```
+
+## Pagination
+
+List endpoints support pagination with these parameters:
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `limit` | number | Max items to return (default: 20, max: 100) |
+| `offset` | number | Number of items to skip |
+
+## Quick Examples
+
+### Create a Document
+
+```bash
+curl -X POST https://api.cocobase.buzz/collections/posts \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"title": "Hello World", "content": "My first post"}'
+```
+
+### List Documents
+
+```bash
+curl https://api.cocobase.buzz/collections/posts?limit=10 \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+### Get a Document
+
+```bash
+curl https://api.cocobase.buzz/collections/posts/DOC_ID \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+---
+
+## API Sections
+
+<CardGroup cols="2">
+  <Card title="Collections API" icon="database" href="/api-reference/collections/create">
+    CRUD operations for documents
+  </Card>
+  <Card title="Auth API" icon="lock" href="/api-reference/auth/register">
+    User authentication endpoints
+  </Card>
+  <Card title="Storage API" icon="cloud-arrow-up" href="/api-reference/storage/upload">
+    File upload and download
+  </Card>
+  <Card title="Realtime API" icon="bolt" href="/api-reference/realtime/watch">
+    Real-time subscriptions
+  </Card>
+</CardGroup>

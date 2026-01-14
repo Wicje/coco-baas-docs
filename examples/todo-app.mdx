@@ -1,0 +1,310 @@
+---
+title: Todo App
+description: Build a complete todo application with Cocobase
+---
+
+# Todo App Example
+
+Build a complete todo application with authentication, real-time updates, and CRUD operations.
+
+## Features
+
+- User authentication
+- Create, read, update, delete todos
+- Mark todos as complete
+- Real-time sync across devices
+- Filter by status
+
+---
+
+## Data Model
+
+```typescript
+interface Todo {
+  title: string;
+  description?: string;
+  completed: boolean;
+  userId: string;
+  createdAt: string;
+  completedAt?: string;
+}
+```
+
+---
+
+## Implementation
+
+<Tabs>
+  <Tab title="JavaScript">
+    ```typescript
+    import { Cocobase } from "cocobase";
+
+    const db = new Cocobase({
+      apiKey: process.env.COCOBASE_API_KEY,
+    });
+
+    // Authentication
+    async function register(email: string, password: string) {
+      await db.auth.register({ email, password });
+      return await db.auth.getUser();
+    }
+
+    async function login(email: string, password: string) {
+      await db.auth.login({ email, password });
+      return await db.auth.getUser();
+    }
+
+    // CRUD Operations
+    async function createTodo(title: string, description?: string) {
+      const user = await db.auth.getUser();
+      return await db.createDocument("todos", {
+        title,
+        description,
+        completed: false,
+        userId: user.id,
+        createdAt: new Date().toISOString(),
+      });
+    }
+
+    async function getTodos(filter?: "all" | "active" | "completed") {
+      const user = await db.auth.getUser();
+      const filters: any = {
+        userId: user.id,
+        orderBy: "createdAt",
+        order: "desc",
+      };
+
+      if (filter === "active") {
+        filters.completed = false;
+      } else if (filter === "completed") {
+        filters.completed = true;
+      }
+
+      return await db.listDocuments("todos", { filters });
+    }
+
+    async function toggleTodo(todoId: string) {
+      const todo = await db.getDocument("todos", todoId);
+      const completed = !todo.data.completed;
+
+      return await db.updateDocument("todos", todoId, {
+        completed,
+        completedAt: completed ? new Date().toISOString() : null,
+      });
+    }
+
+    async function deleteTodo(todoId: string) {
+      return await db.deleteDocument("todos", todoId);
+    }
+
+    // Real-time sync
+    function watchTodos(callback: (todos: any[]) => void) {
+      const user = db.auth.currentUser;
+      return db.watchCollection("todos", (event) => {
+        // Refresh todos list on any change
+        getTodos().then(callback);
+      }, {
+        filters: { userId: user?.id },
+      });
+    }
+    ```
+  </Tab>
+
+  <Tab title="Flutter">
+    ```dart
+    import 'package:cocobase_flutter/cocobase_flutter.dart';
+
+    class TodoService {
+      final Cocobase db;
+
+      TodoService(this.db);
+
+      // Authentication
+      Future<User?> register(String email, String password) async {
+        await db.auth.register(email: email, password: password);
+        return await db.auth.getUser();
+      }
+
+      Future<User?> login(String email, String password) async {
+        await db.auth.login(email: email, password: password);
+        return await db.auth.getUser();
+      }
+
+      // CRUD Operations
+      Future<Document> createTodo(String title, {String? description}) async {
+        final user = await db.auth.getUser();
+        return await db.createDocument('todos', {
+          'title': title,
+          'description': description,
+          'completed': false,
+          'userId': user!.id,
+          'createdAt': DateTime.now().toIso8601String(),
+        });
+      }
+
+      Future<List<Document>> getTodos({String filter = 'all'}) async {
+        final user = await db.auth.getUser();
+        final filters = <String, dynamic>{
+          'userId': user!.id,
+          'orderBy': 'createdAt',
+          'order': 'desc',
+        };
+
+        if (filter == 'active') {
+          filters['completed'] = false;
+        } else if (filter == 'completed') {
+          filters['completed'] = true;
+        }
+
+        return await db.listDocuments('todos', filters: filters);
+      }
+
+      Future<void> toggleTodo(String todoId) async {
+        final todo = await db.getDocument('todos', todoId);
+        final completed = !(todo.data['completed'] as bool);
+
+        await db.updateDocument('todos', todoId, {
+          'completed': completed,
+          'completedAt': completed ? DateTime.now().toIso8601String() : null,
+        });
+      }
+
+      Future<void> deleteTodo(String todoId) async {
+        await db.deleteDocument('todos', todoId);
+      }
+
+      // Real-time sync
+      Stream<List<Document>> watchTodos() {
+        final user = db.auth.currentUser;
+        return db.watchCollectionStream('todos', filters: {
+          'userId': user?.id,
+        });
+      }
+    }
+    ```
+  </Tab>
+
+  <Tab title="React Component">
+    ```tsx
+    import { useState, useEffect } from "react";
+    import { Cocobase } from "cocobase";
+
+    const db = new Cocobase({ apiKey: process.env.COCOBASE_API_KEY });
+
+    interface Todo {
+      id: string;
+      title: string;
+      completed: boolean;
+    }
+
+    export function TodoApp() {
+      const [todos, setTodos] = useState<Todo[]>([]);
+      const [newTodo, setNewTodo] = useState("");
+      const [filter, setFilter] = useState<"all" | "active" | "completed">("all");
+
+      useEffect(() => {
+        loadTodos();
+
+        // Real-time updates
+        const unsubscribe = db.watchCollection("todos", () => {
+          loadTodos();
+        });
+
+        return () => unsubscribe();
+      }, [filter]);
+
+      async function loadTodos() {
+        const user = await db.auth.getUser();
+        const filters: any = { userId: user.id };
+
+        if (filter === "active") filters.completed = false;
+        if (filter === "completed") filters.completed = true;
+
+        const docs = await db.listDocuments("todos", { filters });
+        setTodos(docs.map((d) => ({ id: d.id, ...d.data })));
+      }
+
+      async function addTodo(e: React.FormEvent) {
+        e.preventDefault();
+        if (!newTodo.trim()) return;
+
+        const user = await db.auth.getUser();
+        await db.createDocument("todos", {
+          title: newTodo,
+          completed: false,
+          userId: user.id,
+          createdAt: new Date().toISOString(),
+        });
+
+        setNewTodo("");
+      }
+
+      async function toggleTodo(id: string, completed: boolean) {
+        await db.updateDocument("todos", id, { completed: !completed });
+      }
+
+      async function deleteTodo(id: string) {
+        await db.deleteDocument("todos", id);
+      }
+
+      return (
+        <div className="todo-app">
+          <form onSubmit={addTodo}>
+            <input
+              value={newTodo}
+              onChange={(e) => setNewTodo(e.target.value)}
+              placeholder="What needs to be done?"
+            />
+            <button type="submit">Add</button>
+          </form>
+
+          <div className="filters">
+            <button onClick={() => setFilter("all")}>All</button>
+            <button onClick={() => setFilter("active")}>Active</button>
+            <button onClick={() => setFilter("completed")}>Completed</button>
+          </div>
+
+          <ul>
+            {todos.map((todo) => (
+              <li key={todo.id}>
+                <input
+                  type="checkbox"
+                  checked={todo.completed}
+                  onChange={() => toggleTodo(todo.id, todo.completed)}
+                />
+                <span className={todo.completed ? "completed" : ""}>
+                  {todo.title}
+                </span>
+                <button onClick={() => deleteTodo(todo.id)}>Delete</button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      );
+    }
+    ```
+  </Tab>
+</Tabs>
+
+---
+
+## Key Concepts Demonstrated
+
+1. **Authentication** - User registration and login
+2. **CRUD Operations** - Create, read, update, delete todos
+3. **Filtering** - Query by status (all, active, completed)
+4. **Real-time Updates** - Auto-sync across devices
+5. **User Isolation** - Each user sees only their todos
+
+---
+
+## Next Steps
+
+<CardGroup cols="2">
+  <Card title="E-commerce App" icon="cart-shopping" href="/examples/ecommerce">
+    Build a shopping application
+  </Card>
+  <Card title="Chat App" icon="comments" href="/examples/chat-app">
+    Build a real-time chat
+  </Card>
+</CardGroup>

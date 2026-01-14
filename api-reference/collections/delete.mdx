@@ -1,0 +1,138 @@
+---
+title: Delete Document
+description: Delete a document from a collection
+---
+
+# Delete Document
+
+Delete a document from a collection.
+
+## Endpoint
+
+```
+DELETE /collections/{collection}/{id}
+```
+
+## Parameters
+
+| Parameter | Type | Location | Required | Description |
+|-----------|------|----------|----------|-------------|
+| `collection` | string | path | Yes | Collection name |
+| `id` | string | path | Yes | Document ID |
+
+## Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "doc_abc123",
+    "deleted": true
+  }
+}
+```
+
+## Examples
+
+### cURL
+
+```bash
+curl -X DELETE https://api.cocobase.buzz/collections/posts/doc_abc123 \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+### JavaScript
+
+```javascript
+const response = await fetch(
+  "https://api.cocobase.buzz/collections/posts/doc_abc123",
+  {
+    method: "DELETE",
+    headers: {
+      Authorization: "Bearer YOUR_API_KEY",
+    },
+  }
+);
+
+const result = await response.json();
+console.log(result.data.deleted); // true
+```
+
+### Python
+
+```python
+import requests
+
+response = requests.delete(
+    "https://api.cocobase.buzz/collections/posts/doc_abc123",
+    headers={"Authorization": "Bearer YOUR_API_KEY"},
+)
+
+result = response.json()
+print(result["data"]["deleted"])  # True
+```
+
+## Batch Delete
+
+To delete multiple documents, use the batch endpoint:
+
+```
+POST /collections/{collection}/batch-delete
+```
+
+### Request Body
+
+```json
+{
+  "ids": ["doc_abc123", "doc_def456", "doc_ghi789"]
+}
+```
+
+### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "deleted": 3,
+    "ids": ["doc_abc123", "doc_def456", "doc_ghi789"]
+  }
+}
+```
+
+### Example
+
+```bash
+curl -X POST https://api.cocobase.buzz/collections/posts/batch-delete \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "ids": ["doc_abc123", "doc_def456"]
+  }'
+```
+
+## Error Responses
+
+### Document Not Found
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "Document not found"
+  }
+}
+```
+
+### Permission Denied
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "FORBIDDEN",
+    "message": "You do not have permission to delete this document"
+  }
+}
+```

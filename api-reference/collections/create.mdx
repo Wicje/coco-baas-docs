@@ -1,0 +1,134 @@
+---
+title: Create Document
+description: Create a new document in a collection
+---
+
+# Create Document
+
+Create a new document in a collection.
+
+## Endpoint
+
+```
+POST /collections/{collection}
+```
+
+## Parameters
+
+| Parameter | Type | Location | Required | Description |
+|-----------|------|----------|----------|-------------|
+| `collection` | string | path | Yes | Collection name |
+
+## Request Body
+
+JSON object with your document data.
+
+```json
+{
+  "title": "My Post",
+  "content": "Hello World",
+  "published": true
+}
+```
+
+## Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "doc_abc123",
+    "collection": "posts",
+    "data": {
+      "title": "My Post",
+      "content": "Hello World",
+      "published": true
+    },
+    "createdAt": "2024-01-15T10:30:00Z",
+    "updatedAt": "2024-01-15T10:30:00Z"
+  }
+}
+```
+
+## Examples
+
+### cURL
+
+```bash
+curl -X POST https://api.cocobase.buzz/collections/posts \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "My First Post",
+    "content": "Hello World!",
+    "published": true
+  }'
+```
+
+### JavaScript
+
+```javascript
+const response = await fetch("https://api.cocobase.buzz/collections/posts", {
+  method: "POST",
+  headers: {
+    "Authorization": "Bearer YOUR_API_KEY",
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    title: "My First Post",
+    content: "Hello World!",
+    published: true,
+  }),
+});
+
+const result = await response.json();
+console.log(result.data.id);
+```
+
+### Python
+
+```python
+import requests
+
+response = requests.post(
+    "https://api.cocobase.buzz/collections/posts",
+    headers={
+        "Authorization": "Bearer YOUR_API_KEY",
+        "Content-Type": "application/json",
+    },
+    json={
+        "title": "My First Post",
+        "content": "Hello World!",
+        "published": True,
+    },
+)
+
+result = response.json()
+print(result["data"]["id"])
+```
+
+## Error Responses
+
+### Invalid Collection Name
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "INVALID_COLLECTION",
+    "message": "Collection name contains invalid characters"
+  }
+}
+```
+
+### Invalid Request Body
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "INVALID_BODY",
+    "message": "Request body must be valid JSON"
+  }
+}
+```

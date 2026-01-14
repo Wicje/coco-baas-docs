@@ -1,0 +1,171 @@
+---
+title: Query Documents
+description: Filter and search documents in a collection
+---
+
+# Query Documents
+
+Filter and search documents using query parameters.
+
+## Endpoint
+
+```
+GET /collections/{collection}
+```
+
+## Query Parameters
+
+### Pagination
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `limit` | number | Max items (default: 20, max: 100) |
+| `offset` | number | Items to skip |
+
+### Sorting
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `orderBy` | string | Field to sort by |
+| `order` | string | `asc` or `desc` |
+
+### Filtering
+
+Use field names with operators as query parameters:
+
+| Operator | Syntax | Example |
+|----------|--------|---------|
+| Equal | `field=value` | `status=active` |
+| Not Equal | `field__ne=value` | `status__ne=deleted` |
+| Greater Than | `field__gt=value` | `age__gt=18` |
+| Greater or Equal | `field__gte=value` | `price__gte=10` |
+| Less Than | `field__lt=value` | `age__lt=65` |
+| Less or Equal | `field__lte=value` | `price__lte=100` |
+| Contains | `field__contains=value` | `title__contains=hello` |
+| Starts With | `field__startswith=value` | `email__startswith=admin` |
+| Ends With | `field__endswith=value` | `domain__endswith=.com` |
+| In | `field__in=v1,v2,v3` | `status__in=active,pending` |
+| Not In | `field__notin=v1,v2` | `status__notin=deleted` |
+| Is Null | `field__isnull=true` | `deletedAt__isnull=true` |
+
+## Examples
+
+### Basic Filtering
+
+```bash
+# Get active users
+curl "https://api.cocobase.buzz/collections/users?status=active" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+### Multiple Filters
+
+```bash
+# Get active users over 18, sorted by name
+curl "https://api.cocobase.buzz/collections/users?status=active&age__gt=18&orderBy=name&order=asc" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+### Price Range
+
+```bash
+# Get products between $10 and $100
+curl "https://api.cocobase.buzz/collections/products?price__gte=10&price__lte=100" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+### Text Search
+
+```bash
+# Search posts containing "javascript"
+curl "https://api.cocobase.buzz/collections/posts?title__contains=javascript" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+### Status Filter
+
+```bash
+# Get orders that are pending or processing
+curl "https://api.cocobase.buzz/collections/orders?status__in=pending,processing" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+### Pagination
+
+```bash
+# Get page 3 (20 items per page)
+curl "https://api.cocobase.buzz/collections/posts?limit=20&offset=40&orderBy=createdAt&order=desc" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+## Response
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "doc_abc123",
+      "collection": "posts",
+      "data": {
+        "title": "JavaScript Tutorial",
+        "status": "published"
+      },
+      "createdAt": "2024-01-15T10:30:00Z",
+      "updatedAt": "2024-01-15T10:30:00Z"
+    }
+  ],
+  "meta": {
+    "total": 150,
+    "limit": 20,
+    "offset": 40,
+    "hasMore": true
+  }
+}
+```
+
+## JavaScript Example
+
+```javascript
+// Build query string
+const params = new URLSearchParams({
+  status: "active",
+  age__gt: "18",
+  orderBy: "createdAt",
+  order: "desc",
+  limit: "20",
+});
+
+const response = await fetch(
+  `https://api.cocobase.buzz/collections/users?${params}`,
+  {
+    headers: {
+      Authorization: "Bearer YOUR_API_KEY",
+    },
+  }
+);
+
+const result = await response.json();
+console.log(result.data);
+```
+
+## Python Example
+
+```python
+import requests
+
+response = requests.get(
+    "https://api.cocobase.buzz/collections/users",
+    headers={"Authorization": "Bearer YOUR_API_KEY"},
+    params={
+        "status": "active",
+        "age__gt": 18,
+        "orderBy": "createdAt",
+        "order": "desc",
+        "limit": 20,
+    },
+)
+
+result = response.json()
+print(result["data"])
+```
