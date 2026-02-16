@@ -15,7 +15,10 @@ Cocobase provides a complete authentication system with user registration, login
     ```typescript
     import { Cocobase } from "cocobase";
 
-    const db = new Cocobase({ apiKey: "YOUR_API_KEY" });
+    const db = new Cocobase({ 
+      apiKey: "YOUR_API_KEY",
+      projectId: "YOUR_PROJECT_ID" // Optional
+       });
 
     // Register a new user
     const user = await db.auth.register(
@@ -470,7 +473,7 @@ Update user data after authentication:
   <Tab title="JavaScript">
     ```typescript
     // Update user profile
-    const updatedUser = await db.auth.updateProfile({
+    const updatedProfile = await db.auth.updateUser({
       full_name: "Alice Johnson Smith",
       bio: "Full-stack developer",
       avatar: "https://example.com/avatar.jpg",
@@ -756,7 +759,7 @@ Authenticate users with Google, GitHub, and other OAuth providers:
 <Tabs>
   <Tab title="JavaScript">
     ```typescript
-    // Initiate Google OAuth flow
+{/**    // Initiate Google OAuth flow
     const authUrl = await db.auth.getOAuthUrl("google", {
       redirectUrl: "https://yourapp.com/auth/callback",
       scopes: ["email", "profile"]
@@ -771,8 +774,17 @@ Authenticate users with Google, GitHub, and other OAuth providers:
 
     // Exchange code for token
     const session = await db.auth.handleOAuthCallback("google", code);
-    console.log("User logged in:", session.user);
-    ```
+    console.log("User logged in:", session.user); **/}
+    Web - Using Google Identity Services
+   * google.accounts.id.initialize({
+   *   client_id: 'YOUR_GOOGLE_CLIENT_ID',
+   *   callback: async (response) => {
+   *     const user = await db.auth.loginWithGoogle(response.credential, 'web');
+   *     console.log('Logged in:', user.email);
+   *   }
+   * });
+
+    ``` 
 
   </Tab>
 
